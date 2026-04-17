@@ -59,7 +59,11 @@ if (-not (Test-IsListening -Port $WebPort)) {
     "-ExecutionPolicy",
     "Bypass",
     "-File",
-    "`"$PhpStartScript`""
+    "`"$PhpStartScript`"",
+    "-BindHost",
+    $BindHost,
+    "-Port",
+    $WebPort
   ) -WindowStyle Minimized | Out-Null
 } else {
   Write-Host "PHP panel already running on $webUrl" -ForegroundColor Yellow
