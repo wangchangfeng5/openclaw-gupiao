@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>持仓详情 | OpenClaw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/app.css" />
+  <link rel="stylesheet" href="/assets/css/focus-pages.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="focus-shell">
+    <header class="focus-top">
+      <div>
+        <h1 class="focus-title" id="detailTitle">持仓详情</h1>
+        <p class="focus-sub" id="detailSub">加载中...</p>
+      </div>
+      <div class="focus-actions">
+        <button id="backPositionsBtn" class="btn ghost" type="button">返回持仓雷达</button>
+        <button id="openWatchlistBtn" class="btn ghost" type="button">热门持续关注股</button>
+        <button id="openDashboardBtn" class="btn ghost" type="button">总面板</button>
+        <button id="refreshBtn" class="btn" type="button">同步并刷新</button>
+      </div>
+    </header>
+
+    <section id="detailKpi" class="focus-grid"></section>
+
+    <section class="focus-layout detail-layout">
+      <section class="focus-panel">
+        <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin:0;">走势与关键位</h3>
+          <span id="detailStamp" class="chip">-</span>
+        </div>
+        <canvas id="trendCanvas" class="trend-canvas" height="280"></canvas>
+        <div id="metricsGrid" class="detail-metrics"></div>
+        <h4 style="margin:10px 0 6px;">最新交易记录</h4>
+        <div id="tradeList" class="focus-list compact"></div>
+        <div style="margin-top: 10px; overflow:auto;">
+          <table class="focus-table" id="quoteTable"></table>
+        </div>
+      </section>
+
+      <section class="focus-panel">
+        <h3 style="margin-top:0;">板块与关联标的</h3>
+        <div id="sectorSummary" class="focus-card"></div>
+        <h4 style="margin:10px 0 6px;">板块强势票</h4>
+        <div id="sectorLeaders" class="focus-list compact"></div>
+        <h4 style="margin:10px 0 6px;">板块动量票</h4>
+        <div id="sectorMomentum" class="focus-list compact"></div>
+        <h4 style="margin:10px 0 6px;">同板块推荐票</h4>
+        <div id="sectorPicks" class="focus-list compact"></div>
+
+        <h3 style="margin-top:14px;">关联持仓</h3>
+        <div id="relatedPositions" class="focus-list compact"></div>
+
+        <h3 style="margin-top:14px;">相关新闻</h3>
+        <div id="newsList" class="focus-list compact"></div>
+
+        <h3 style="margin-top:14px;">近期 OpenClaw 建议</h3>
+        <div id="suggestionList" class="focus-list compact"></div>
+      </section>
+    </section>
+  </main>
+
+  <template id="toastTpl"><div class="toast"></div></template>
+  <script src="/assets/js/position-detail-page.js?v=20260416b" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,122 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>持仓雷达 | OpenClaw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/app.css" />
+  <link rel="stylesheet" href="/assets/css/focus-pages.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="focus-shell">
+    <header class="focus-top">
+      <div>
+        <h1 class="focus-title">持仓雷达</h1>
+        <p class="focus-sub">独立持仓页面：仓位、盈亏、止盈止损、交易动作一体化管理</p>
+      </div>
+      <div class="focus-actions">
+        <button id="openDashboardBtn" class="btn ghost" type="button">总面板</button>
+        <button id="openWatchlistBtn" class="btn ghost" type="button">热门持续关注股</button>
+        <button id="openSectorsBtn" class="btn ghost" type="button">板块雷达</button>
+        <button id="refreshBtn" class="btn ghost" type="button">刷新</button>
+        <button id="logoutBtn" class="btn danger" type="button">退出</button>
+      </div>
+    </header>
+
+    <section id="posKpi" class="focus-grid"></section>
+
+    <section class="focus-layout">
+      <section class="focus-panel">
+        <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin:0;">持仓分析总表</h3>
+          <span id="generatedAt" class="chip">-</span>
+        </div>
+        <div class="notice">自动刷新: 15 秒。点击“交易”可直接做加仓/减仓/清仓并回写持仓。</div>
+        <div style="margin-top:8px; overflow:auto;">
+          <table class="focus-table" id="positionTable"></table>
+        </div>
+      </section>
+
+      <section class="focus-board">
+        <section class="focus-panel">
+          <h3 style="margin-top:0;">新增/编辑持仓</h3>
+          <form id="positionForm" class="focus-form two">
+            <input type="hidden" name="id" />
+            <label>代码<input name="symbol" required placeholder="600519" /></label>
+            <label>名称<input name="name" placeholder="贵州茅台" /></label>
+            <label>市场
+              <select name="market">
+                <option value="A_STOCK_MAIN">A股主板</option>
+                <option value="US">美股</option>
+              </select>
+            </label>
+            <label>状态
+              <select name="status">
+                <option value="holding">持有中</option>
+                <option value="watching">观察中</option>
+                <option value="closed">已结束</option>
+              </select>
+            </label>
+            <label>数量<input name="quantity" type="number" step="0.01" value="0" /></label>
+            <label>成本价<input name="cost_price" type="number" step="0.0001" value="0" /></label>
+            <label>当前价<input name="current_price" type="number" step="0.0001" /></label>
+            <label>止损位<input name="stop_loss_price" type="number" step="0.0001" /></label>
+            <label>止盈位<input name="take_profit_price" type="number" step="0.0001" /></label>
+            <label class="full">策略备注<textarea name="strategy" rows="2"></textarea></label>
+            <label class="full">操作建议<textarea name="operation_advice" rows="2"></textarea></label>
+            <div class="full focus-actions">
+              <button class="btn primary" type="submit">保存持仓</button>
+              <button class="btn ghost" type="button" id="resetFormBtn">重置</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="focus-panel">
+          <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+            <h3 style="margin:0;">交易操作</h3>
+            <span id="tradeTarget" class="chip">未选择持仓</span>
+          </div>
+          <form id="tradeForm" class="focus-form two">
+            <input type="hidden" name="position_id" />
+            <label>动作
+              <select name="trade_type">
+                <option value="add">加仓</option>
+                <option value="reduce">减仓</option>
+                <option value="clear">清仓</option>
+              </select>
+            </label>
+            <label>数量<input name="quantity" type="number" step="0.01" placeholder="清仓可留空" /></label>
+            <label>成交价<input name="price" type="number" step="0.0001" required /></label>
+            <label>手续费<input name="fee" type="number" step="0.0001" value="0" /></label>
+            <label class="full">备注<textarea name="note" rows="2" placeholder="例如：压力位减仓20%"></textarea></label>
+            <div class="full focus-actions">
+              <button class="btn" type="submit">记录交易</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="focus-panel">
+          <h3 style="margin-top:0;">交易历史</h3>
+          <div id="tradeList" class="focus-list"></div>
+        </section>
+
+        <section class="focus-panel">
+          <h3 style="margin-top:0;">自动同步记录</h3>
+          <div id="noteList" class="focus-list"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <template id="toastTpl"><div class="toast"></div></template>
+  <script src="/assets/js/positions-page.js?v=20260416c" type="module"></script>
+</body>
+</html>
+

@@ -1,0 +1,10 @@
+﻿/.env
+/storage/backups/
+/storage/cache/*.json
+/storage/logs/*.log
+/public/.phpunit.result.cache
+**/__pycache__/
+*.pyc
+/storage/cache/test_tmp/
+/tools/
+/winget*.log

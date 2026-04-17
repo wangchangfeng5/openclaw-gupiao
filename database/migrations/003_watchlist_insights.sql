@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS watchlist_insights (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  watchlist_id BIGINT UNSIGNED NOT NULL,
+  symbol VARCHAR(16) NOT NULL,
+  current_price DECIMAL(18,4) NULL,
+  support_price DECIMAL(18,4) NULL,
+  resistance_price DECIMAL(18,4) NULL,
+  stop_loss_price DECIMAL(18,4) NULL,
+  take_profit_price DECIMAL(18,4) NULL,
+  position_zone VARCHAR(32) NULL,
+  action_advice TEXT NULL,
+  confidence DECIMAL(5,2) NULL,
+  openclaw_note TEXT NULL,
+  analyzed_at DATETIME NOT NULL,
+  next_review_at DATETIME NULL,
+  raw_json JSON NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_watchlist_insights_watchlist FOREIGN KEY (watchlist_id) REFERENCES watchlist(id) ON DELETE CASCADE,
+  KEY idx_watchlist_insights_watchlist_id (watchlist_id),
+  KEY idx_watchlist_insights_symbol (symbol),
+  KEY idx_watchlist_insights_analyzed_at (analyzed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

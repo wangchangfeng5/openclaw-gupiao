@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>板块雷达 | OpenClaw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/app.css" />
+  <link rel="stylesheet" href="/assets/css/focus-pages.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="focus-shell">
+    <header class="focus-top">
+      <div>
+        <h1 class="focus-title">板块雷达</h1>
+        <p class="focus-sub">自动抓取当前热门板块与强势股票，并支持你自定义热门题材持续跟踪</p>
+      </div>
+      <div class="focus-actions">
+        <button id="openDashboardBtn" class="btn ghost" type="button">总面板</button>
+        <button id="openPositionsBtn" class="btn ghost" type="button">持仓雷达</button>
+        <button id="openWatchlistBtn" class="btn ghost" type="button">热门持续关注股</button>
+        <button id="syncNowBtn" class="btn ghost" type="button">立即同步</button>
+        <button id="refreshBtn" class="btn ghost" type="button">刷新</button>
+        <button id="logoutBtn" class="btn danger" type="button">退出</button>
+      </div>
+    </header>
+
+    <section id="sectorKpi" class="focus-grid"></section>
+
+    <section class="focus-layout">
+      <section class="focus-panel">
+        <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin:0;">热门板块与强势股</h3>
+          <span id="sectorStamp" class="chip">-</span>
+        </div>
+        <div class="notice">自动刷新: 15 秒；每分钟自动尝试同步一次市场数据。</div>
+        <div id="hotSectorList" class="focus-list" style="margin-top: 10px;"></div>
+      </section>
+
+      <section class="focus-board">
+        <section class="focus-panel">
+          <h3 style="margin-top:0;">自定义热门题材</h3>
+          <form id="themeForm" class="focus-form two">
+            <input type="hidden" name="id" />
+            <label>题材名称<input name="theme_name" required placeholder="例如：AI算力" /></label>
+            <label>关键词<input name="keywords" placeholder="例如：算力,服务器,CPO" /></label>
+            <label>优先级<input name="priority" type="number" value="50" /></label>
+            <label>状态
+              <select name="status">
+                <option value="active">启用</option>
+                <option value="paused">暂停</option>
+              </select>
+            </label>
+            <label class="full">备注<textarea name="note" rows="2" placeholder="例如：重点跟踪趋势强化与放量突破"></textarea></label>
+            <div class="full focus-actions">
+              <button class="btn primary" type="submit">保存题材</button>
+              <button class="btn ghost" type="button" id="resetThemeBtn">重置</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="focus-panel">
+          <h3 style="margin-top:0;">我的热门题材池</h3>
+          <div id="themeList" class="focus-list"></div>
+        </section>
+
+        <section class="focus-panel">
+          <h3 style="margin-top:0;">热门股汇总</h3>
+          <div id="topStockList" class="focus-list"></div>
+        </section>
+      </section>
+    </section>
+  </main>
+
+  <template id="toastTpl"><div class="toast"></div></template>
+  <script src="/assets/js/sectors-page.js?v=20260416b" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS position_trades (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  position_id BIGINT UNSIGNED NOT NULL,
+  trade_type VARCHAR(16) NOT NULL,
+  quantity DECIMAL(18,4) NOT NULL,
+  price DECIMAL(18,4) NOT NULL,
+  fee DECIMAL(18,4) NOT NULL DEFAULT 0,
+  amount DECIMAL(24,4) NOT NULL,
+  realized_pnl DECIMAL(24,4) NULL,
+  before_quantity DECIMAL(18,4) NOT NULL,
+  before_cost_price DECIMAL(18,4) NOT NULL,
+  after_quantity DECIMAL(18,4) NOT NULL,
+  after_cost_price DECIMAL(18,4) NOT NULL,
+  before_status VARCHAR(24) NOT NULL,
+  after_status VARCHAR(24) NOT NULL,
+  note TEXT NULL,
+  traded_at DATETIME NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_position_trades_position FOREIGN KEY (position_id) REFERENCES positions(id) ON DELETE CASCADE,
+  KEY idx_position_trades_position (position_id),
+  KEY idx_position_trades_type (trade_type),
+  KEY idx_position_trades_traded_at (traded_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -1,0 +1,276 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenClaw 智能投研面板</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/app.css" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="kicker">OpenClaw Quant OS</p>
+        <h1>智能投研与持仓中台</h1>
+      </div>
+      <div class="top-actions">
+        <button id="openPositionsPageBtn" class="btn ghost" type="button">持仓独立页</button>
+        <button id="openWatchlistPageBtn" class="btn ghost" type="button">热门股独立页</button>
+        <button id="openSectorsPageBtn" class="btn ghost" type="button">板块雷达</button>
+        <span id="userBadge" class="chip hidden"></span>
+        <span id="syncStatus" class="chip hidden"></span>
+        <button id="quickBackupBtn" class="btn ghost hidden">快速备份</button>
+        <button id="syncNowBtn" class="btn ghost hidden" type="button">立即同步</button>
+        <button id="refreshBtn" class="btn ghost">刷新</button>
+        <button id="logoutBtn" class="btn danger hidden">退出</button>
+      </div>
+    </header>
+
+    <section id="loginCard" class="panel login-panel">
+      <h2>登录面板</h2>
+      <p class="muted">本机单用户模式，登录后可管理持仓、建议、任务与实时预警。</p>
+      <form id="loginForm" class="form-grid">
+        <label>用户名<input type="text" name="username" placeholder="admin" required /></label>
+        <label>密码<input type="password" name="password" placeholder="请输入密码" required /></label>
+        <button class="btn primary" type="submit">登录</button>
+      </form>
+      <p id="loginError" class="error-text"></p>
+    </section>
+
+    <section id="workspace" class="workspace hidden">
+      <section class="kpi-grid" id="kpiGrid"></section>
+
+      <section class="panel section">
+        <div class="section-head">
+          <h2>风险总览</h2>
+          <span class="chip" id="riskStamp">实时</span>
+        </div>
+        <div id="riskBoard" class="risk-board"></div>
+      </section>
+
+      <section class="tabs">
+        <button class="tab active" data-tab="positions">持仓管理</button>
+        <button class="tab" data-tab="suggestions">建议中心</button>
+        <button class="tab" data-tab="jobs">OpenClaw 任务</button>
+        <button class="tab" data-tab="market">市场情报</button>
+        <button class="tab" data-tab="alerts">消息中心</button>
+        <button class="tab" data-tab="insights">进阶看板</button>
+      </section>
+
+      <section id="tab-positions" class="panel tab-panel active">
+        <div class="split">
+          <div>
+            <h3>新增持仓</h3>
+            <form id="positionForm" class="form-grid compact">
+              <label>代码<input name="symbol" required placeholder="600519" /></label>
+              <label>名称<input name="name" placeholder="贵州茅台" /></label>
+              <label>数量<input name="quantity" type="number" step="0.01" value="0" /></label>
+              <label>成本价<input name="cost_price" type="number" step="0.0001" value="0" /></label>
+              <label>当前价<input name="current_price" type="number" step="0.0001" value="0" /></label>
+              <label>止损位<input name="stop_loss_price" type="number" step="0.0001" /></label>
+              <label>止盈位<input name="take_profit_price" type="number" step="0.0001" /></label>
+              <label>状态
+                <select name="status">
+                  <option value="holding">持有中</option>
+                  <option value="watching">观察中</option>
+                  <option value="closed">已结束</option>
+                </select>
+              </label>
+              <label class="full">策略备注<textarea name="strategy" rows="2"></textarea></label>
+              <button class="btn primary" type="submit">保存持仓</button>
+            </form>
+          </div>
+          <div>
+            <h3>持仓列表</h3>
+            <div id="positionsTable" class="table-wrap"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-suggestions" class="panel tab-panel">
+        <div class="split">
+          <div>
+            <h3>手工补录建议</h3>
+            <form id="suggestionForm" class="form-grid compact">
+              <label class="full">建议内容<textarea name="content" rows="5" required></textarea></label>
+              <label>关联代码（逗号分隔）<input name="symbols" placeholder="600519,601318" /></label>
+              <label>标签（逗号分隔）<input name="tags" placeholder="盘前,风控" /></label>
+              <button class="btn primary" type="submit">提交补录</button>
+            </form>
+
+            <h3 class="mt-16">建议反馈</h3>
+            <form id="feedbackForm" class="form-grid compact">
+              <label>建议 ID<input name="suggestion_id" type="number" min="1" required placeholder="从右侧建议卡片查看" /></label>
+              <label>结果
+                <select name="outcome">
+                  <option value="profit">盈利</option>
+                  <option value="loss">亏损</option>
+                  <option value="neutral">中性</option>
+                  <option value="pending">待观察</option>
+                </select>
+              </label>
+              <label>评分(0-100)<input name="review_score" type="number" min="0" max="100" value="80" /></label>
+              <label>状态
+                <select name="status">
+                  <option value="reviewed">已复盘</option>
+                  <option value="executed">已执行</option>
+                  <option value="new">保持新建议</option>
+                </select>
+              </label>
+              <label class="full">复盘备注<textarea name="review_note" rows="2" placeholder="记录执行原因与结果"></textarea></label>
+              <button class="btn primary" type="submit">提交反馈</button>
+            </form>
+          </div>
+          <div>
+            <h3>建议流</h3>
+            <div id="suggestionList" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-jobs" class="panel tab-panel">
+        <div class="split">
+          <div>
+            <h3>创建 OpenClaw 定时任务</h3>
+            <form id="jobForm" class="form-grid compact">
+              <label>任务名<input name="name" required placeholder="盘后复盘" /></label>
+              <label>Session
+                <select name="session">
+                  <option value="isolated">isolated</option>
+                  <option value="main">main</option>
+                </select>
+              </label>
+              <label>cron 表达式<input name="cron" placeholder="0 15 * * 1-5" /></label>
+              <label>时区<input name="tz" value="Asia/Shanghai" /></label>
+              <label class="full">消息内容<textarea name="message" rows="4" required></textarea></label>
+              <button class="btn primary" type="submit">创建任务</button>
+            </form>
+
+            <h3 class="mt-16">模板实例化</h3>
+            <form id="templateInstantiateForm" class="form-grid compact">
+              <label class="full">选择模板
+                <select id="templateInstantiateSelect" name="template_id" required>
+                  <option value="">请先选择模板</option>
+                </select>
+              </label>
+              <label>Session
+                <select name="session">
+                  <option value="isolated">isolated</option>
+                  <option value="main">main</option>
+                </select>
+              </label>
+              <label>时区<input name="timezone" value="Asia/Shanghai" /></label>
+              <button class="btn" type="submit">实例化为任务</button>
+            </form>
+          </div>
+          <div>
+            <h3>任务列表</h3>
+            <div class="meta-actions mb-8">
+              <button id="syncJobsBtn" class="btn ghost" type="button">同步远程任务</button>
+              <button id="flushQueueBtn" class="btn ghost" type="button">重试本地队列</button>
+              <span id="jobQueueMeta" class="muted"></span>
+            </div>
+            <div id="jobList" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-market" class="panel tab-panel">
+        <div class="split">
+          <div>
+            <h3>强势板块</h3>
+            <div id="sectorList" class="list"></div>
+          </div>
+          <div>
+            <h3>新闻快照</h3>
+            <div id="newsList" class="list"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-alerts" class="panel tab-panel">
+        <h3>实时提醒</h3>
+        <div id="alertList" class="list"></div>
+      </section>
+
+      <section id="tab-insights" class="panel tab-panel">
+        <div class="stack">
+          <div>
+            <h3>建议质量看板</h3>
+            <div id="feedbackBoard" class="kpi-grid compact-kpi"></div>
+          </div>
+
+          <div class="split">
+            <div>
+              <h3>候选与关注池</h3>
+              <form id="watchlistForm" class="form-grid compact">
+                <label>代码<input name="symbol" required placeholder="600519" /></label>
+                <label>名称<input name="name" placeholder="可选" /></label>
+                <label>市场
+                  <select name="market">
+                    <option value="A_STOCK_MAIN">A 股主板</option>
+                    <option value="US">美股</option>
+                  </select>
+                </label>
+                <label>优先级<input name="priority" type="number" value="50" /></label>
+                <label class="full">跟踪逻辑<textarea name="thesis" rows="2" placeholder="为什么加入关注池"></textarea></label>
+                <button class="btn primary" type="submit">加入关注池</button>
+              </form>
+              <div id="candidateList"></div>
+            </div>
+
+            <div>
+              <h3>策略模板库</h3>
+              <form id="templateForm" class="form-grid compact">
+                <label>模板名称<input name="name" required placeholder="盘前扫描模板" /></label>
+                <label>周期
+                  <select name="period">
+                    <option value="pre_market">盘前</option>
+                    <option value="intraday">盘中</option>
+                    <option value="post_market">盘后</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </label>
+                <label>cron 表达式<input name="cron_expression" required placeholder="0 9 * * 1-5" /></label>
+                <label>时区<input name="timezone" value="Asia/Shanghai" /></label>
+                <label class="full">提示词<textarea name="prompt" rows="3" required placeholder="例如：输出当日强势股与风险点"></textarea></label>
+                <button class="btn primary" type="submit">保存模板</button>
+              </form>
+              <div id="templateList" class="list"></div>
+            </div>
+          </div>
+
+          <div class="split">
+            <div>
+              <h3>审计日志</h3>
+              <div id="auditList" class="list"></div>
+            </div>
+            <div>
+              <h3>数据质量日志</h3>
+              <div id="qualityList" class="list"></div>
+            </div>
+          </div>
+
+          <div class="meta-actions">
+            <button id="backupBtn" class="btn ghost" type="button">立即备份</button>
+            <button id="snapshotBtn" class="btn" type="button">生成风险快照</button>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <template id="toastTpl">
+    <div class="toast"></div>
+  </template>
+
+  <script src="/assets/js/app.js?v=20260416d" type="module"></script>
+</body>
+</html>
