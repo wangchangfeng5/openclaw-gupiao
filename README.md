@@ -60,6 +60,7 @@ powershell -ExecutionPolicy Bypass -File scripts/windows/start-manual-panel.ps1
 
 - `http://127.0.0.1:8080/`
 - `http://127.0.0.1:8501/`
+- 并自动确保 `workers/scheduler.py` 已运行（用于中午/收盘复盘快照自动更新）
 
 8. Dev 独立测试入口（不影响稳定版）：
 
@@ -135,11 +136,21 @@ powershell -ExecutionPolicy Bypass -File scripts/windows/promote-dev-to-main.ps1
 
 - 交易时段（工作日 9:25-11:35 / 12:55-15:10）：60 秒
 - 非交易时段：900 秒
+- 复盘快照自动执行：
+  - 工作日中午窗口：12:08-12:20（slot=`midday`）
+  - 工作日收盘窗口：15:08-15:25（slot=`close`）
+  - 自动写入 `watchlist_review_snapshots`（全局 + 个股）
 
 可选自动任务：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/windows/setup-schtasks.ps1
+```
+
+手动执行一次复盘快照：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows/run-review-snapshot.ps1 -Slot manual
 ```
 
 ## 测试

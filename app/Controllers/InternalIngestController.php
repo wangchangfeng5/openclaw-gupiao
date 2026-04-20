@@ -264,6 +264,90 @@ final class InternalIngestController extends BaseController
         ]);
     }
 
+    public function ingestCloseRankings(): void
+    {
+        $body = $this->body();
+        $items = $body['items'] ?? [];
+        if (!is_array($items)) {
+            $this->fail('items must be array', 422);
+            return;
+        }
+
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare(
+            'INSERT INTO market_close_rankings (
+                trade_date, rank_type, rank_no, symbol, market, name, sector_name,
+                change_1d_pct, change_3d_pct, change_5d_pct, change_10d_pct,
+                net_main_inflow, net_main_inflow_pct, flow_direction, source, snapshot_time, raw_json, created_at, updated_at
+            ) VALUES (
+                :trade_date, :rank_type, :rank_no, :symbol, :market, :name, :sector_name,
+                :change_1d_pct, :change_3d_pct, :change_5d_pct, :change_10d_pct,
+                :net_main_inflow, :net_main_inflow_pct, :flow_direction, :source, :snapshot_time, :raw_json, NOW(), NOW()
+            )
+            ON DUPLICATE KEY UPDATE
+                rank_no = VALUES(rank_no),
+                market = VALUES(market),
+                name = VALUES(name),
+                sector_name = VALUES(sector_name),
+                change_1d_pct = VALUES(change_1d_pct),
+                change_3d_pct = VALUES(change_3d_pct),
+                change_5d_pct = VALUES(change_5d_pct),
+                change_10d_pct = VALUES(change_10d_pct),
+                net_main_inflow = VALUES(net_main_inflow),
+                net_main_inflow_pct = VALUES(net_main_inflow_pct),
+                flow_direction = VALUES(flow_direction),
+                source = VALUES(source),
+                snapshot_time = VALUES(snapshot_time),
+                raw_json = VALUES(raw_json),
+                updated_at = NOW()'
+        );
+
+        $upserted = 0;
+        foreach ($items as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $rankType = strtolower(trim((string) ($item['rank_type'] ?? '')));
+            if (!in_array($rankType, ['strong', 'moneyflow'], true)) {
+                continue;
+            }
+
+            $symbol = strtoupper(trim((string) ($item['symbol'] ?? '')));
+            if ($symbol === '') {
+                continue;
+            }
+
+            $tradeDate = trim((string) ($item['trade_date'] ?? ''));
+            if ($tradeDate === '') {
+                $tradeDate = date('Y-m-d');
+            }
+
+            $stmt->execute([
+                'trade_date' => $tradeDate,
+                'rank_type' => $rankType,
+                'rank_no' => max(1, (int) ($item['rank_no'] ?? 0)),
+                'symbol' => $symbol,
+                'market' => (string) ($item['market'] ?? 'A_STOCK_MAIN'),
+                'name' => trim((string) ($item['name'] ?? '')),
+                'sector_name' => trim((string) ($item['sector_name'] ?? '')),
+                'change_1d_pct' => $item['change_1d_pct'] ?? null,
+                'change_3d_pct' => $item['change_3d_pct'] ?? null,
+                'change_5d_pct' => $item['change_5d_pct'] ?? null,
+                'change_10d_pct' => $item['change_10d_pct'] ?? null,
+                'net_main_inflow' => $item['net_main_inflow'] ?? null,
+                'net_main_inflow_pct' => $item['net_main_inflow_pct'] ?? null,
+                'flow_direction' => trim((string) ($item['flow_direction'] ?? '')),
+                'source' => (string) ($item['source'] ?? 'market_collector'),
+                'snapshot_time' => (string) ($item['snapshot_time'] ?? now_sql()),
+                'raw_json' => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+            $upserted++;
+        }
+
+        $this->ok(['upserted' => $upserted]);
+    }
+
     public function qualityLog(): void
     {
         $body = $this->body();

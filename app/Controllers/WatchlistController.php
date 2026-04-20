@@ -8,16 +8,19 @@ use App\Core\Database;
 use App\Services\AuditService;
 use App\Services\SymbolInsightService;
 use App\Services\WatchlistRankingService;
+use App\Services\WatchlistReviewService;
 
 final class WatchlistController extends BaseController
 {
     private SymbolInsightService $insight;
     private WatchlistRankingService $ranking;
+    private WatchlistReviewService $review;
 
     public function __construct()
     {
         $this->insight = new SymbolInsightService();
         $this->ranking = new WatchlistRankingService();
+        $this->review = new WatchlistReviewService();
     }
 
     public function index(): void
@@ -71,6 +74,7 @@ final class WatchlistController extends BaseController
         ]);
         $rows = $stmt->fetchAll() ?: [];
         $rows = $this->ranking->enrichRows($rows);
+        $rows = $this->review->enrichRows($rows, $userId);
 
         $this->ok(['watchlist' => $rows]);
     }
@@ -232,10 +236,13 @@ final class WatchlistController extends BaseController
             'analysis_id' => $analysisId,
         ]);
 
+        $reviewStats = $this->review->syncForWatchlist($id, $userId, 42);
+
         $this->ok([
             'id' => $id,
             'analysis_id' => $analysisId,
             'analysis' => $analysis,
+            'review' => $reviewStats,
         ]);
     }
 
@@ -272,6 +279,7 @@ final class WatchlistController extends BaseController
         $ok = 0;
         $errors = [];
         $nextCursor = $cursor;
+        $processedWatchlistIds = [];
 
         foreach ($rows as $row) {
             try {
@@ -287,6 +295,7 @@ final class WatchlistController extends BaseController
                 $this->insight->saveWatchlistInsight((int) $row['id'], $analysis, $userId);
                 $ok++;
                 $nextCursor = max($nextCursor, (int) ($row['id'] ?? 0));
+                $processedWatchlistIds[] = (int) ($row['id'] ?? 0);
             } catch (\Throwable $e) {
                 $errors[] = [
                     'id' => (int) ($row['id'] ?? 0),
@@ -320,6 +329,11 @@ final class WatchlistController extends BaseController
             'remaining' => $remaining,
         ]);
 
+        $reviewStats = ['watchlists' => 0, 'insights' => 0, 'upserts' => 0];
+        if ($processedWatchlistIds !== []) {
+            $reviewStats = $this->review->syncForWatchlists(array_values(array_unique($processedWatchlistIds)), $userId, 28);
+        }
+
         $this->ok([
             'total_active' => $totalActive,
             'batch_total' => count($rows),
@@ -330,6 +344,7 @@ final class WatchlistController extends BaseController
             'remaining' => $remaining,
             'has_more' => $hasMore,
             'errors' => array_slice($errors, 0, 30),
+            'review' => $reviewStats,
         ]);
     }
 
@@ -382,6 +397,7 @@ final class WatchlistController extends BaseController
         }
 
         $enrichedRows = $this->ranking->enrichRows([$row]);
+        $enrichedRows = $this->review->enrichRows($enrichedRows, $userId, 18);
         $overview = $enrichedRows[0] ?? $row;
 
         $symbol = strtoupper(trim((string) ($overview['symbol'] ?? '')));
@@ -394,6 +410,8 @@ final class WatchlistController extends BaseController
         $sectorContext = $this->loadSectorContext($overview, $userId);
         $relatedNews = $this->loadRelatedNews($symbol, $name, $sectorName, 16, 72);
         $recentSuggestions = $this->loadRecentSuggestions($userId, $symbol, 6);
+        $reviewHistory = $this->review->history($id, $userId, 16);
+        $reviewOverview = $this->review->overview($id, $userId);
 
         $this->ok([
             'overview' => $overview,
@@ -401,7 +419,152 @@ final class WatchlistController extends BaseController
             'sector_context' => $sectorContext,
             'related_news' => $relatedNews,
             'recent_suggestions' => $recentSuggestions,
+            'review_overview' => $reviewOverview,
+            'review_history' => $reviewHistory,
             'generated_at' => now_sql(),
+        ]);
+    }
+
+    public function review(array $params): void
+    {
+        $userId = $this->userId();
+        $id = (int) ($params['id'] ?? 0);
+        if ($id <= 0) {
+            $this->fail('invalid watchlist id', 422);
+            return;
+        }
+
+        if ($this->findWatchlist($id, $userId) === null) {
+            $this->fail('watchlist not found', 404);
+            return;
+        }
+
+        $summary = $this->review->syncForWatchlist($id, $userId, 56);
+        $snapshot = $this->review->snapshotForUser($userId, 'manual', 360);
+        $overview = $this->review->overview($id, $userId);
+        $history = $this->review->history($id, $userId, 20);
+
+        AuditService::log('watchlist.review', 'watchlist', (string) $id, [
+            'summary' => $summary,
+            'snapshot' => $snapshot,
+        ]);
+
+        $this->ok([
+            'id' => $id,
+            'summary' => $summary,
+            'snapshot' => $snapshot,
+            'overview' => $overview,
+            'history' => $history,
+        ]);
+    }
+
+    public function reviewAll(): void
+    {
+        $userId = $this->userId();
+        $body = $this->body();
+        $watchlistLimit = max(20, min(500, (int) ($body['watchlist_limit'] ?? $this->query('watchlist_limit', 220))));
+        $insightLimit = max(8, min(120, (int) ($body['insight_limit'] ?? $this->query('insight_limit', 28))));
+
+        $summary = $this->review->syncForAllActive($userId, $watchlistLimit, $insightLimit);
+        $snapshot = $this->review->snapshotForUser($userId, 'manual', max(240, $watchlistLimit));
+
+        AuditService::log('watchlist.review_all', 'watchlist', null, [
+            'watchlist_limit' => $watchlistLimit,
+            'insight_limit' => $insightLimit,
+            'summary' => $summary,
+            'snapshot' => $snapshot,
+        ]);
+
+        $this->ok([
+            'summary' => $summary,
+            'snapshot' => $snapshot,
+        ]);
+    }
+
+    public function reviews(array $params): void
+    {
+        $userId = $this->userId();
+        $id = (int) ($params['id'] ?? 0);
+        if ($id <= 0) {
+            $this->fail('invalid watchlist id', 422);
+            return;
+        }
+        if ($this->findWatchlist($id, $userId) === null) {
+            $this->fail('watchlist not found', 404);
+            return;
+        }
+
+        $limit = max(1, min(120, (int) $this->query('limit', 20)));
+        $history = $this->review->history($id, $userId, $limit);
+        $overview = $this->review->overview($id, $userId);
+
+        $this->ok([
+            'watchlist_id' => $id,
+            'overview' => $overview,
+            'reviews' => $history,
+        ]);
+    }
+
+    public function snapshot(array $params = []): void
+    {
+        $userId = $this->userId();
+        $body = $this->body();
+        $slot = (string) ($body['slot'] ?? $this->query('slot', 'manual'));
+        $watchlistLimit = max(40, min(600, (int) ($body['watchlist_limit'] ?? $this->query('watchlist_limit', 320))));
+        $insightLimit = max(8, min(120, (int) ($body['insight_limit'] ?? $this->query('insight_limit', 36))));
+
+        $summary = $this->review->syncForAllActive($userId, $watchlistLimit, $insightLimit);
+        $snapshot = $this->review->snapshotForUser($userId, $slot, $watchlistLimit);
+        $latest = $this->review->latestGlobalSnapshot($userId);
+
+        AuditService::log('watchlist.review_snapshot', 'watchlist', null, [
+            'slot' => $slot,
+            'summary' => $summary,
+            'snapshot' => $snapshot,
+        ]);
+
+        $this->ok([
+            'slot' => $slot,
+            'summary' => $summary,
+            'snapshot' => $snapshot,
+            'global_latest' => $latest,
+        ]);
+    }
+
+    public function globalSnapshots(): void
+    {
+        $userId = $this->userId();
+        $days = max(3, min(180, (int) $this->query('days', 30)));
+        $series = $this->review->globalSnapshots($userId, $days);
+        $latest = $this->review->latestGlobalSnapshot($userId);
+
+        $this->ok([
+            'days' => $days,
+            'latest' => $latest,
+            'series' => $series,
+        ]);
+    }
+
+    public function symbolSnapshots(array $params): void
+    {
+        $userId = $this->userId();
+        $id = (int) ($params['id'] ?? 0);
+        if ($id <= 0) {
+            $this->fail('invalid watchlist id', 422);
+            return;
+        }
+        if ($this->findWatchlist($id, $userId) === null) {
+            $this->fail('watchlist not found', 404);
+            return;
+        }
+
+        $days = max(3, min(180, (int) $this->query('days', 30)));
+        $series = $this->review->watchlistSnapshotSeries($userId, $id, $days);
+
+        $this->ok([
+            'watchlist_id' => $id,
+            'days' => $days,
+            'series' => $series,
         ]);
     }
 

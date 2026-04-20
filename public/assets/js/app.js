@@ -4,6 +4,14 @@
   source: null,
   pollTimer: null,
   templates: [],
+  closeRanking: {
+    type: 'strong',
+    rows: [],
+    tradeDate: '',
+    snapshotTime: '',
+    sortKey: 'rank_no',
+    sortDir: 'asc',
+  },
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -111,6 +119,22 @@ function fmtPlainPct(val) {
   return `${Number(val).toFixed(2)}%`;
 }
 
+function fmtFlow(val) {
+  if (val === null || val === undefined || Number.isNaN(Number(val))) return '-';
+  const n = Number(val);
+  const abs = Math.abs(n);
+  let unit = '';
+  let num = abs;
+  if (abs >= 1e8) {
+    unit = '亿';
+    num = abs / 1e8;
+  } else if (abs >= 1e4) {
+    unit = '万';
+    num = abs / 1e4;
+  }
+  return `${n >= 0 ? '+' : '-'}${num.toFixed(2)}${unit}`;
+}
+
 function parseJson(value, fallback = []) {
   if (value === null || value === undefined || value === '') return fallback;
   if (Array.isArray(value) || typeof value === 'object') return value;
@@ -206,6 +230,113 @@ function renderRisk(risk = {}) {
   node.innerHTML = items
     .map(([k, v]) => `<article class="risk-item"><small>${k}</small><b>${v}</b></article>`)
     .join('');
+}
+
+function getCloseRankingSortValue(row, key) {
+  if (key === 'rank_no') return Number(row.rank_no || 0);
+  if (key === 'symbol') return String(row.symbol || '');
+  if (key === 'name') return String(row.name || '');
+  if (key === 'sector_name') return String(row.sector_name || '');
+  if (key === 'flow_direction') return String(row.flow_direction || '');
+  if (key === 'net_main_inflow') return Number(row.net_main_inflow || 0);
+  if (key === 'change_1d_pct') return Number(row.change_1d_pct || 0);
+  if (key === 'change_3d_pct') return Number(row.change_3d_pct || 0);
+  if (key === 'change_5d_pct') return Number(row.change_5d_pct || 0);
+  if (key === 'change_10d_pct') return Number(row.change_10d_pct || 0);
+  return 0;
+}
+
+function renderCloseRankings() {
+  const node = $('#closeRankTable');
+  if (!node) return;
+
+  const metaNode = $('#closeRankMeta');
+  const strongBtn = $('#closeRankStrongBtn');
+  const flowBtn = $('#closeRankFlowBtn');
+
+  if (strongBtn) strongBtn.classList.toggle('active', state.closeRanking.type === 'strong');
+  if (flowBtn) flowBtn.classList.toggle('active', state.closeRanking.type === 'moneyflow');
+
+  if (metaNode) {
+    const dateText = state.closeRanking.tradeDate || '-';
+    const stamp = state.closeRanking.snapshotTime || '-';
+    metaNode.textContent = `${dateText} / ${stamp}`;
+  }
+
+  const rows = [...(state.closeRanking.rows || [])];
+  const { sortKey, sortDir } = state.closeRanking;
+  rows.sort((a, b) => {
+    const av = getCloseRankingSortValue(a, sortKey);
+    const bv = getCloseRankingSortValue(b, sortKey);
+    if (typeof av === 'string' || typeof bv === 'string') {
+      const compare = String(av).localeCompare(String(bv), 'zh-CN');
+      return sortDir === 'asc' ? compare : -compare;
+    }
+    return sortDir === 'asc' ? Number(av) - Number(bv) : Number(bv) - Number(av);
+  });
+
+  if (!rows.length) {
+    node.innerHTML = '<p class="muted">暂无收盘榜单数据（收盘后自动刷新）</p>';
+    return;
+  }
+
+  const pctCell = (val) => {
+    if (val === null || val === undefined || Number.isNaN(Number(val))) return '<span>-</span>';
+    const num = Number(val);
+    const cls = num > 0 ? 'num-pos' : num < 0 ? 'num-neg' : '';
+    return `<span class="${cls}">${fmtPct(num)}</span>`;
+  };
+
+  node.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th class="sortable-th ${sortKey === 'rank_no' ? 'active' : ''}" data-close-sort="rank_no">排名</th>
+          <th class="sortable-th ${sortKey === 'symbol' ? 'active' : ''}" data-close-sort="symbol">代码</th>
+          <th class="sortable-th ${sortKey === 'name' ? 'active' : ''}" data-close-sort="name">名称</th>
+          <th class="sortable-th ${sortKey === 'sector_name' ? 'active' : ''}" data-close-sort="sector_name">所属板块</th>
+          <th class="sortable-th ${sortKey === 'change_1d_pct' ? 'active' : ''}" data-close-sort="change_1d_pct">1日涨跌</th>
+          <th class="sortable-th ${sortKey === 'change_3d_pct' ? 'active' : ''}" data-close-sort="change_3d_pct">3日涨跌</th>
+          <th class="sortable-th ${sortKey === 'change_5d_pct' ? 'active' : ''}" data-close-sort="change_5d_pct">5日涨跌</th>
+          <th class="sortable-th ${sortKey === 'change_10d_pct' ? 'active' : ''}" data-close-sort="change_10d_pct">10日涨跌</th>
+          <th class="sortable-th ${sortKey === 'net_main_inflow' ? 'active' : ''}" data-close-sort="net_main_inflow">主力净流入</th>
+          <th class="sortable-th ${sortKey === 'flow_direction' ? 'active' : ''}" data-close-sort="flow_direction">资金方向</th>
+        </tr>
+      </thead>
+      <tbody>
+      ${rows
+        .map(
+          (r) => `<tr>
+            <td>${fmtNum(r.rank_no)}</td>
+            <td>${r.symbol || '-'}</td>
+            <td>${r.name || '-'}</td>
+            <td>${r.sector_name || '-'}</td>
+            <td>${pctCell(r.change_1d_pct)}</td>
+            <td>${pctCell(r.change_3d_pct)}</td>
+            <td>${pctCell(r.change_5d_pct)}</td>
+            <td>${pctCell(r.change_10d_pct)}</td>
+            <td>${fmtFlow(r.net_main_inflow)}</td>
+            <td>${r.flow_direction || '-'}</td>
+          </tr>`
+        )
+        .join('')}
+      </tbody>
+    </table>
+  `;
+
+  $$('[data-close-sort]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const key = el.dataset.closeSort;
+      if (!key) return;
+      if (state.closeRanking.sortKey === key) {
+        state.closeRanking.sortDir = state.closeRanking.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.closeRanking.sortKey = key;
+        state.closeRanking.sortDir = key === 'rank_no' ? 'asc' : 'desc';
+      }
+      renderCloseRankings();
+    });
+  });
 }
 
 function renderPositions(rows) {
@@ -637,6 +768,19 @@ async function loadMarket() {
   renderNews(news.news || []);
 }
 
+async function loadCloseRankings(forceType = null) {
+  if (forceType === 'strong' || forceType === 'moneyflow') {
+    state.closeRanking.type = forceType;
+  }
+
+  const type = state.closeRanking.type || 'strong';
+  const data = await api(`/api/market/close-rankings?type=${encodeURIComponent(type)}&limit=100`);
+  state.closeRanking.rows = data.rankings || [];
+  state.closeRanking.tradeDate = data.trade_date || '';
+  state.closeRanking.snapshotTime = data.snapshot_time || '';
+  renderCloseRankings();
+}
+
 async function loadAlerts() {
   const data = await api('/api/alerts?limit=50');
   renderAlerts(data.alerts || []);
@@ -661,6 +805,7 @@ async function loadAdvanced() {
 async function loadAll() {
   const tasks = [
     ['总览', loadOverview],
+    ['收盘榜单', loadCloseRankings],
     ['持仓', loadPositions],
     ['建议', loadSuggestions],
     ['任务', loadJobs],
@@ -777,6 +922,28 @@ function wireForms() {
     e.preventDefault();
     e.stopPropagation();
     openExternalPage('/sectors.html');
+  });
+  $('#closeRankStrongBtn')?.addEventListener('click', async () => {
+    try {
+      await loadCloseRankings('strong');
+    } catch (err) {
+      showToast(`加载强势榜失败: ${err.message}`);
+    }
+  });
+  $('#closeRankFlowBtn')?.addEventListener('click', async () => {
+    try {
+      await loadCloseRankings('moneyflow');
+    } catch (err) {
+      showToast(`加载资金流榜失败: ${err.message}`);
+    }
+  });
+  $('#closeRankRefreshBtn')?.addEventListener('click', async () => {
+    try {
+      await loadCloseRankings();
+      showToast('收盘榜单已刷新');
+    } catch (err) {
+      showToast(`收盘榜单刷新失败: ${err.message}`);
+    }
   });
 
   const positionForm = $('#positionForm');

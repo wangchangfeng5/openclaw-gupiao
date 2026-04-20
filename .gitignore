@@ -2,6 +2,7 @@
 /storage/backups/
 /storage/cache/*.json
 /storage/logs/*.log
+/storage/runtime/close_rankings_last_date.txt
 /public/.phpunit.result.cache
 **/__pycache__/
 *.pyc

@@ -69,6 +69,7 @@ $router->add('POST', '/api/openclaw/cron/queue/flush', static fn() => $cron->flu
 
 $router->add('GET', '/api/market/sectors/strength', static fn() => $market->sectorsStrength(), 'auth');
 $router->add('GET', '/api/market/watchlist/candidates', static fn() => $market->watchlistCandidates(), 'auth');
+$router->add('GET', '/api/market/close-rankings', static fn() => $market->closeRankings(), 'auth');
 $router->add('GET', '/api/market/themes/overview', static fn() => $market->themesOverview(), 'auth');
 $router->add('POST', '/api/market/themes', static fn() => $market->storeTheme(), 'auth');
 $router->add('PUT', '/api/market/themes/{id}', static fn(array $p) => $market->updateTheme($p), 'auth');
@@ -85,8 +86,14 @@ $router->add('PUT', '/api/watchlist/{id}', static fn(array $p) => $watchlist->up
 $router->add('DELETE', '/api/watchlist/{id}', static fn(array $p) => $watchlist->destroy($p), 'auth');
 $router->add('POST', '/api/watchlist/{id}/analyze', static fn(array $p) => $watchlist->analyze($p), 'auth');
 $router->add('POST', '/api/watchlist/analyze-all', static fn() => $watchlist->analyzeAll(), 'auth');
+$router->add('POST', '/api/watchlist/{id}/review', static fn(array $p) => $watchlist->review($p), 'auth');
+$router->add('POST', '/api/watchlist/review-all', static fn() => $watchlist->reviewAll(), 'auth');
+$router->add('POST', '/api/watchlist/review/snapshot', static fn() => $watchlist->snapshot(), 'auth');
+$router->add('GET', '/api/watchlist/review/snapshots/global', static fn() => $watchlist->globalSnapshots(), 'auth');
 $router->add('GET', '/api/watchlist/{id}/detail', static fn(array $p) => $watchlist->detail($p), 'auth');
 $router->add('GET', '/api/watchlist/{id}/insights', static fn(array $p) => $watchlist->insights($p), 'auth');
+$router->add('GET', '/api/watchlist/{id}/reviews', static fn(array $p) => $watchlist->reviews($p), 'auth');
+$router->add('GET', '/api/watchlist/{id}/review/snapshots', static fn(array $p) => $watchlist->symbolSnapshots($p), 'auth');
 
 $router->add('GET', '/api/strategy/templates', static fn() => $strategy->index(), 'auth');
 $router->add('POST', '/api/strategy/templates', static fn() => $strategy->store(), 'auth');
@@ -102,6 +109,7 @@ $router->add('POST', '/api/internal/ingest/suggestions', static fn() => $interna
 $router->add('POST', '/api/internal/ingest/sectors', static fn() => $internal->ingestSectors(), 'internal');
 $router->add('POST', '/api/internal/ingest/news', static fn() => $internal->ingestNews(), 'internal');
 $router->add('POST', '/api/internal/ingest/quotes', static fn() => $internal->ingestQuotes(), 'internal');
+$router->add('POST', '/api/internal/ingest/close-rankings', static fn() => $internal->ingestCloseRankings(), 'internal');
 $router->add('POST', '/api/internal/quality/log', static fn() => $internal->qualityLog(), 'internal');
 $router->add('GET', '/api/internal/market/symbols', static fn() => $internal->marketSymbols(), 'internal');
 

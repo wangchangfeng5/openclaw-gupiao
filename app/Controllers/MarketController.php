@@ -49,6 +49,68 @@ final class MarketController extends BaseController
         ]);
     }
 
+    public function closeRankings(): void
+    {
+        $type = strtolower(trim((string) $this->query('type', 'strong')));
+        if (!in_array($type, ['strong', 'moneyflow'], true)) {
+            $type = 'strong';
+        }
+
+        $limit = max(1, min(100, (int) $this->query('limit', 100)));
+        $tradeDate = trim((string) $this->query('trade_date', ''));
+
+        $pdo = Database::connection();
+        if ($tradeDate === '') {
+            $dateStmt = $pdo->prepare('SELECT MAX(trade_date) FROM market_close_rankings WHERE rank_type = :rank_type');
+            $dateStmt->execute(['rank_type' => $type]);
+            $tradeDate = (string) ($dateStmt->fetchColumn() ?: '');
+        }
+
+        if ($tradeDate === '') {
+            $this->ok([
+                'type' => $type,
+                'trade_date' => null,
+                'snapshot_time' => null,
+                'rankings' => [],
+            ]);
+            return;
+        }
+
+        $metaStmt = $pdo->prepare(
+            'SELECT MAX(snapshot_time) AS snapshot_time
+             FROM market_close_rankings
+             WHERE rank_type = :rank_type AND trade_date = :trade_date'
+        );
+        $metaStmt->execute([
+            'rank_type' => $type,
+            'trade_date' => $tradeDate,
+        ]);
+        $snapshotTime = (string) (($metaStmt->fetch()['snapshot_time'] ?? '') ?: '');
+
+        $stmt = $pdo->prepare(
+            'SELECT
+                rank_no, symbol, market, name, sector_name,
+                change_1d_pct, change_3d_pct, change_5d_pct, change_10d_pct,
+                net_main_inflow, net_main_inflow_pct, flow_direction,
+                trade_date, snapshot_time
+             FROM market_close_rankings
+             WHERE rank_type = :rank_type AND trade_date = :trade_date
+             ORDER BY rank_no ASC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':rank_type', $type);
+        $stmt->bindValue(':trade_date', $tradeDate);
+        $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        $this->ok([
+            'type' => $type,
+            'trade_date' => $tradeDate,
+            'snapshot_time' => $snapshotTime !== '' ? $snapshotTime : null,
+            'rankings' => $stmt->fetchAll() ?: [],
+        ]);
+    }
+
     public function news(): void
     {
         $limit = max(1, min(200, (int) $this->query('limit', 50)));

@@ -5,6 +5,7 @@ param(
   [string]$BindHost = "127.0.0.1",
   [int]$WebPort = 8080,
   [int]$StreamlitPort = 8501,
+  [switch]$NoWorkers,
   [switch]$NoBrowser
 )
 
@@ -47,9 +48,44 @@ function Wait-UrlReady {
 
 $webUrl = "http://$BindHost`:$WebPort/"
 $streamlitUrl = "http://$BindHost`:$StreamlitPort/"
+$workerScript = Join-Path $PSScriptRoot "run-workers.ps1"
+
+function Test-WorkerSchedulerRunning {
+  try {
+    $processes = Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object {
+      $cmd = $_.CommandLine
+      if ($null -eq $cmd) {
+        $cmd = ""
+      }
+      $cmd -match 'workers[\\/]+scheduler\.py'
+    }
+    return $processes.Count -gt 0
+  } catch {
+    return $false
+  }
+}
 
 if (-not (Test-Path $PhpStartScript)) {
   throw "PHP startup script not found: $PhpStartScript"
+}
+
+if (-not $NoWorkers) {
+  if (Test-Path $workerScript) {
+    if (-not (Test-WorkerSchedulerRunning)) {
+      Write-Host "Starting scheduler worker for intraday/close snapshot refresh..." -ForegroundColor Cyan
+      Start-Process -FilePath "powershell" -ArgumentList @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "`"$workerScript`""
+      ) -WindowStyle Minimized | Out-Null
+    } else {
+      Write-Host "Scheduler worker already running." -ForegroundColor Yellow
+    }
+  } else {
+    Write-Warning "Worker startup script not found: $workerScript"
+  }
 }
 
 if (-not (Test-IsListening -Port $WebPort)) {
