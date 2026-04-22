@@ -571,6 +571,7 @@
 
 .pill.up { color: var(--fp-bad); border-color: rgba(255, 123, 123, 0.6); }
 .pill.down { color: var(--fp-good); border-color: rgba(89, 230, 165, 0.6); }
+.pill.warn { color: var(--fp-warn); border-color: rgba(255, 191, 99, 0.75); }
 
 .score-badge {
   display: inline-block;
@@ -703,6 +704,39 @@
   color: var(--fp-text);
 }
 
+.health-page .health-layout {
+  grid-template-columns: 1fr 1fr;
+}
+
+.health-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.health-status-card {
+  background: rgba(6, 16, 22, 0.84);
+  border: 1px solid rgba(111, 228, 255, 0.22);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.health-status-card h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.health-status-card .health-main {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.health-status-card .health-sub {
+  margin: 6px 0 0;
+  color: var(--fp-muted);
+  font-size: 12px;
+}
+
 @media (max-width: 1120px) {
   .focus-layout {
     grid-template-columns: 1fr;
@@ -717,6 +751,14 @@
   }
 
   .review-global-charts {
+    grid-template-columns: 1fr;
+  }
+
+  .health-page .health-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .health-status-grid {
     grid-template-columns: 1fr;
   }
 

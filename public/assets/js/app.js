@@ -923,6 +923,11 @@ function wireForms() {
     e.stopPropagation();
     openExternalPage('/sectors.html');
   });
+  $('#openHealthPageBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openExternalPage('/health.html');
+  });
   $('#closeRankStrongBtn')?.addEventListener('click', async () => {
     try {
       await loadCloseRankings('strong');

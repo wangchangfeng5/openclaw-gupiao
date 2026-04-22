@@ -15,6 +15,7 @@ use App\Controllers\StrategyTemplateController;
 use App\Controllers\StreamController;
 use App\Controllers\SuggestionsController;
 use App\Controllers\SystemOpsController;
+use App\Controllers\SystemHealthController;
 use App\Controllers\WatchlistController;
 use App\Core\Router;
 
@@ -32,6 +33,7 @@ $alerts = new AlertsController();
 $watchlist = new WatchlistController();
 $audit = new AuditController();
 $system = new SystemOpsController();
+$health = new SystemHealthController();
 $quality = new DataQualityController();
 $strategy = new StrategyTemplateController();
 
@@ -104,6 +106,10 @@ $router->add('GET', '/api/quality/logs', static fn() => $quality->index(), 'auth
 $router->add('POST', '/api/system/backup', static fn() => $system->backup(), 'auth');
 $router->add('POST', '/api/system/risk/snapshot', static fn() => $system->snapshotRisk(), 'auth');
 $router->add('POST', '/api/system/ingest/once', static fn() => $system->runIngestOnce(), 'auth');
+$router->add('GET', '/api/system/health/overview', static fn() => $health->overview(), 'auth');
+$router->add('GET', '/api/system/health/queue', static fn() => $health->queue(), 'auth');
+$router->add('POST', '/api/system/health/queue/retry-failed', static fn() => $health->retryFailed(), 'auth');
+$router->add('POST', '/api/system/health/queue/{id}/retry', static fn(array $p) => $health->retryOne($p), 'auth');
 
 $router->add('POST', '/api/internal/ingest/suggestions', static fn() => $internal->ingestSuggestions(), 'internal');
 $router->add('POST', '/api/internal/ingest/sectors', static fn() => $internal->ingestSectors(), 'internal');

@@ -97,6 +97,174 @@ final class OpenClawQueueService
         ];
     }
 
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listQueue(int $limit = 100, string $status = ''): array
+    {
+        $limit = max(1, min(500, $limit));
+        $allowedStatuses = ['pending', 'retry', 'processing', 'done', 'failed'];
+        $useStatus = in_array($status, $allowedStatuses, true);
+
+        $sql = 'SELECT id, user_id, action, job_id, status, attempt_count, last_error,
+                       queued_at, last_attempt_at, next_retry_at, completed_at, updated_at
+                FROM openclaw_job_queue
+                WHERE user_id = :user_id';
+        if ($useStatus) {
+            $sql .= ' AND status = :status';
+        }
+        $sql .= ' ORDER BY id DESC LIMIT :limit';
+
+        $stmt = Database::connection()->prepare($sql);
+        $stmt->bindValue(':user_id', $this->userId, \PDO::PARAM_INT);
+        if ($useStatus) {
+            $stmt->bindValue(':status', $status);
+        }
+        $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    /**
+     * @return array{window_hours:int,since:string,total:int,done:int,failed:int,success_rate:float|null}
+     */
+    public function successRate(int $windowHours = 24): array
+    {
+        $windowHours = max(1, min(168, $windowHours));
+        $since = (new DateTimeImmutable())->modify('-' . $windowHours . ' hours')->format('Y-m-d H:i:s');
+
+        $stmt = Database::connection()->prepare(
+            "SELECT
+                SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS done_count,
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+                COUNT(*) AS total_count
+             FROM openclaw_job_queue
+             WHERE user_id = :user_id
+               AND status IN ('done', 'failed')
+               AND completed_at IS NOT NULL
+               AND completed_at >= :since"
+        );
+        $stmt->execute([
+            'user_id' => $this->userId,
+            'since' => $since,
+        ]);
+        $row = $stmt->fetch() ?: [];
+
+        $done = (int) ($row['done_count'] ?? 0);
+        $failed = (int) ($row['failed_count'] ?? 0);
+        $total = (int) ($row['total_count'] ?? 0);
+        $successRate = $total > 0 ? round($done * 100 / $total, 2) : null;
+
+        return [
+            'window_hours' => $windowHours,
+            'since' => $since,
+            'total' => $total,
+            'done' => $done,
+            'failed' => $failed,
+            'success_rate' => $successRate,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function findQueueItem(int $id): ?array
+    {
+        if ($id <= 0) {
+            return null;
+        }
+
+        $stmt = Database::connection()->prepare(
+            'SELECT id, user_id, action, job_id, status, attempt_count, last_error,
+                    queued_at, last_attempt_at, next_retry_at, completed_at, updated_at
+             FROM openclaw_job_queue
+             WHERE id = :id AND user_id = :user_id
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'id' => $id,
+            'user_id' => $this->userId,
+        ]);
+
+        $row = $stmt->fetch();
+        return is_array($row) ? $row : null;
+    }
+
+    public function markForRetry(int $id): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+
+        $stmt = Database::connection()->prepare(
+            "UPDATE openclaw_job_queue
+             SET status = 'pending',
+                 attempt_count = 0,
+                 last_error = '',
+                 last_attempt_at = NULL,
+                 next_retry_at = NOW(),
+                 completed_at = NULL,
+                 updated_at = NOW()
+             WHERE id = :id
+               AND user_id = :user_id
+               AND status IN ('failed', 'retry')"
+        );
+        $stmt->execute([
+            'id' => $id,
+            'user_id' => $this->userId,
+        ]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    public function markFailedForRetry(int $limit = 50): int
+    {
+        $limit = max(1, min(1000, $limit));
+        $idsStmt = Database::connection()->prepare(
+            'SELECT id
+             FROM openclaw_job_queue
+             WHERE user_id = :user_id
+               AND status = :status
+             ORDER BY id DESC
+             LIMIT :limit'
+        );
+        $idsStmt->bindValue(':user_id', $this->userId, \PDO::PARAM_INT);
+        $idsStmt->bindValue(':status', 'failed');
+        $idsStmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+        $idsStmt->execute();
+        $rows = $idsStmt->fetchAll() ?: [];
+        if ($rows === []) {
+            return 0;
+        }
+
+        $ids = array_values(array_filter(array_map(
+            static fn(array $row): int => (int) ($row['id'] ?? 0),
+            $rows
+        ), static fn(int $id): bool => $id > 0));
+        if ($ids === []) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $params = array_merge($ids, [$this->userId]);
+
+        $sql = "UPDATE openclaw_job_queue
+                SET status = 'pending',
+                    attempt_count = 0,
+                    last_error = '',
+                    last_attempt_at = NULL,
+                    next_retry_at = NOW(),
+                    completed_at = NULL,
+                    updated_at = NOW()
+                WHERE id IN ({$placeholders})
+                  AND user_id = ?";
+        $stmt = Database::connection()->prepare($sql);
+        $stmt->execute($params);
+
+        return (int) $stmt->rowCount();
+    }
+
     public function enqueueCreate(array $payload, string $reason): array
     {
         $localJobId = $this->generateLocalJobId();

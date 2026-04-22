@@ -486,8 +486,11 @@ def build_quote_items(symbol_rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]
         try:
             payload = request_json_no_proxy(url, timeout=6)
             data = (payload or {}).get("data") or {}
+            # Eastmoney field f43 is latest price scaled by 100.
+            # Always divide by 100, otherwise low-price stocks (<10 CNY)
+            # are incorrectly written as 100x (e.g. 9.25 -> 925).
             raw_price = float(data.get("f43") or 0)
-            price = raw_price / 100 if raw_price > 1000 else raw_price
+            price = raw_price / 100
             change_pct = float(data.get("f170") or 0) / 100
             sector_name = str(data.get("f127") or data.get("f128") or "").strip()
             result.append(

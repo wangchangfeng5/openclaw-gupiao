@@ -1,12 +1,12 @@
 {
     "status": "running",
-    "started_at": "2026-04-20 14:13:57",
-    "started_ts": 1776665637,
+    "started_at": "2026-04-22 11:45:16",
+    "started_ts": 1776829516,
     "finished_at": null,
     "finished_ts": null,
     "advice_code": null,
     "market_code": null,
     "message": "ingest worker started",
-    "updated_at": "2026-04-20 14:13:57",
-    "updated_ts": 1776665637
+    "updated_at": "2026-04-22 11:45:16",
+    "updated_ts": 1776829516
 }

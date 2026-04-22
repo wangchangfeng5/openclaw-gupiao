@@ -1062,6 +1062,11 @@ function wireActions() {
     e.stopPropagation();
     openExternalPage('/sectors.html');
   });
+  $('#openHealthBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openExternalPage('/health.html');
+  });
 
   $('#sortByScoreBtn')?.addEventListener('click', () => {
     state.sortByScore = !state.sortByScore;

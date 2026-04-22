@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>系统健康中心 | OpenClaw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260417-colorrule" />
+  <link rel="stylesheet" href="/assets/css/focus-pages.css?v=20260421-health-center-v1" />
+</head>
+<body class="health-page">
+  <div class="bg-grid"></div>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="focus-shell">
+    <header class="focus-top">
+      <div>
+        <h1 class="focus-title">系统健康中心</h1>
+        <p class="focus-sub">延迟、队列、成功率、最近错误、一键重试</p>
+      </div>
+      <div class="focus-actions">
+        <button id="openDashboardBtn" class="btn ghost" type="button">总面板</button>
+        <button id="openPositionsBtn" class="btn ghost" type="button">持仓雷达</button>
+        <button id="openWatchlistBtn" class="btn ghost" type="button">关注池</button>
+        <button id="refreshBtn" class="btn ghost" type="button">刷新</button>
+        <button id="flushQueueBtn" class="btn ghost" type="button">执行队列</button>
+        <button id="retryFailedBtn" class="btn" type="button">重试全部失败</button>
+        <button id="logoutBtn" class="btn danger" type="button">退出</button>
+      </div>
+    </header>
+
+    <section id="healthKpi" class="focus-grid"></section>
+
+    <section class="focus-layout health-layout">
+      <section class="focus-panel">
+        <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin:0;">实时状态</h3>
+          <span id="healthStamp" class="chip">-</span>
+        </div>
+        <div id="healthStatusGrid" class="health-status-grid"></div>
+      </section>
+
+      <section class="focus-panel">
+        <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin:0;">最近错误</h3>
+          <span id="errorCountChip" class="chip">-</span>
+        </div>
+        <div id="errorList" class="focus-list compact"></div>
+      </section>
+    </section>
+
+    <section class="focus-panel">
+      <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+        <h3 style="margin:0;">OpenClaw 队列明细</h3>
+        <div class="focus-actions">
+          <label style="display:flex; align-items:center; gap:6px; color:var(--fp-muted);">
+            状态
+            <select id="queueStatusFilter">
+              <option value="">全部</option>
+              <option value="pending">pending</option>
+              <option value="retry">retry</option>
+              <option value="processing">processing</option>
+              <option value="failed">failed</option>
+              <option value="done">done</option>
+            </select>
+          </label>
+          <button id="reloadQueueBtn" class="btn ghost tiny" type="button">刷新队列</button>
+        </div>
+      </div>
+      <div style="overflow:auto;">
+        <table id="queueTable" class="focus-table"></table>
+      </div>
+    </section>
+  </main>
+
+  <template id="toastTpl"><div class="toast"></div></template>
+  <script src="/assets/js/health-page.js?v=20260421-health-center-v1" type="module"></script>
+</body>
+</html>
+
