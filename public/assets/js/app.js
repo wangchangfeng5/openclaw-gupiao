@@ -96,7 +96,7 @@ function startRealtimePolling() {
   stopRealtimeChannels();
 
   const tick = () => {
-    Promise.all([loadAlerts(), loadOverview(), loadSuggestions(), loadPositions()]).catch(() => {});
+    Promise.all([loadAlerts(), loadOverview(), loadMarketHeat(), loadSuggestions(), loadPositions()]).catch(() => {});
   };
 
   tick();
@@ -230,6 +230,77 @@ function renderRisk(risk = {}) {
   node.innerHTML = items
     .map(([k, v]) => `<article class="risk-item"><small>${k}</small><b>${v}</b></article>`)
     .join('');
+}
+
+function renderMarketHeat(data = {}) {
+  const node = $('#marketHeatBoard');
+  const stamp = $('#marketHeatStamp');
+  if (!node) return;
+
+  const mode = String(data.mode || 'neutral');
+  const market = data.market || {};
+  const sectors = data.sectors || {};
+  const shortTerm = data.short_term || {};
+  const alerts = Array.isArray(data.alerts) ? data.alerts : [];
+  const hottest = Array.isArray(sectors.hottest) ? sectors.hottest.slice(0, 5) : [];
+  const weakest = Array.isArray(sectors.weakest) ? sectors.weakest.slice(0, 5) : [];
+
+  if (stamp) {
+    const modeText = mode === 'overheat'
+      ? '过热'
+      : mode === 'risk'
+        ? '风险'
+        : mode === 'oversold'
+          ? '超跌'
+          : '中性';
+    const asof = market.asof_time || data.generated_at || '-';
+    stamp.textContent = `${modeText} · ${asof}`;
+  }
+
+  const pctRatio = (v) => `${(Number(v || 0) * 100).toFixed(1)}%`;
+
+  const renderSectorLine = (row, fallbackClass) => {
+    const change = Number(row.change_pct || 0);
+    const cls = change >= 5 ? 'overheat' : change <= -4 ? 'oversold' : fallbackClass;
+    return `<div class="heat-line">
+      <span>${row.sector_name || '-'}</span>
+      <span class="heat-chip ${cls}">${fmtPct(change)}</span>
+    </div>`;
+  };
+
+  node.innerHTML = `
+    <article class="heat-banner mode-${mode}">
+      <h3>${data.title || '市场热度提醒'}</h3>
+      <p>${data.summary || '按既定策略执行，避免情绪化操作。'}</p>
+      <p class="tip">${data.action_tip || '保持冷静，跟随定时策略。'}</p>
+    </article>
+
+    <div class="heat-metrics">
+      <article class="heat-metric"><small>热度指数</small><b>${fmtNum(data.heat_score)}</b></article>
+      <article class="heat-metric"><small>上涨占比</small><b>${pctRatio(market.up_ratio)}</b></article>
+      <article class="heat-metric"><small>下跌占比</small><b>${pctRatio(market.down_ratio)}</b></article>
+      <article class="heat-metric"><small>平均涨跌</small><b>${fmtPct(market.avg_change_pct)}</b></article>
+      <article class="heat-metric"><small>短期大涨样本</small><b>${fmtNum(shortTerm.short_runup_count)}</b></article>
+      <article class="heat-metric"><small>短期大跌样本</small><b>${fmtNum(shortTerm.short_drawdown_count)}</b></article>
+    </div>
+
+    <div class="heat-grid">
+      <article class="heat-box">
+        <h4>板块热度</h4>
+        ${hottest.length ? hottest.map((row) => renderSectorLine(row, 'overheat')).join('') : '<p class="muted">暂无数据</p>'}
+      </article>
+      <article class="heat-box">
+        <h4>板块回撤</h4>
+        ${weakest.length ? weakest.map((row) => renderSectorLine(row, 'risk')).join('') : '<p class="muted">暂无数据</p>'}
+      </article>
+    </div>
+
+    <div class="heat-notes">
+      ${alerts
+        .map((item) => `<div class="heat-note"><strong>${item.title || '提醒'}</strong>${item.message || ''}</div>`)
+        .join('')}
+    </div>
+  `;
 }
 
 function getCloseRankingSortValue(row, key) {
@@ -768,6 +839,11 @@ async function loadMarket() {
   renderNews(news.news || []);
 }
 
+async function loadMarketHeat() {
+  const data = await api('/api/market/heat-alert');
+  renderMarketHeat(data);
+}
+
 async function loadCloseRankings(forceType = null) {
   if (forceType === 'strong' || forceType === 'moneyflow') {
     state.closeRanking.type = forceType;
@@ -805,6 +881,7 @@ async function loadAdvanced() {
 async function loadAll() {
   const tasks = [
     ['总览', loadOverview],
+    ['热度提醒', loadMarketHeat],
     ['收盘榜单', loadCloseRankings],
     ['持仓', loadPositions],
     ['建议', loadSuggestions],
@@ -922,6 +999,11 @@ function wireForms() {
     e.preventDefault();
     e.stopPropagation();
     openExternalPage('/sectors.html');
+  });
+  $('#openOpportunitiesPageBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openExternalPage('/opportunities.html');
   });
   $('#openHealthPageBtn')?.addEventListener('click', (e) => {
     e.preventDefault();

@@ -6,15 +6,18 @@ namespace App\Controllers;
 
 use App\Core\Database;
 use App\Services\AuditService;
+use App\Services\MarketOpportunityService;
 use App\Services\SectorThemeService;
 
 final class MarketController extends BaseController
 {
     private SectorThemeService $themeService;
+    private MarketOpportunityService $opportunityService;
 
     public function __construct()
     {
         $this->themeService = new SectorThemeService();
+        $this->opportunityService = new MarketOpportunityService();
     }
 
     public function sectorsStrength(): void
@@ -111,6 +114,223 @@ final class MarketController extends BaseController
         ]);
     }
 
+    public function opportunities(): void
+    {
+        $limit = max(1, min(30, (int) $this->query('limit', 30)));
+        $payload = $this->opportunityService->build($this->userId(), $limit);
+        $this->ok($payload);
+    }
+
+    public function heatAlert(): void
+    {
+        $pdo = Database::connection();
+
+        $marketAgg = $pdo->query(
+            "SELECT
+                COUNT(*) AS total_count,
+                SUM(CASE WHEN x.change_pct > 0 THEN 1 ELSE 0 END) AS up_count,
+                SUM(CASE WHEN x.change_pct < 0 THEN 1 ELSE 0 END) AS down_count,
+                SUM(CASE WHEN x.change_pct = 0 THEN 1 ELSE 0 END) AS flat_count,
+                AVG(x.change_pct) AS avg_change_pct,
+                SUM(CASE WHEN x.change_pct >= 5 THEN 1 ELSE 0 END) AS strong_up_count,
+                SUM(CASE WHEN x.change_pct >= 7 THEN 1 ELSE 0 END) AS extreme_up_count,
+                SUM(CASE WHEN x.change_pct <= -5 THEN 1 ELSE 0 END) AS strong_down_count,
+                SUM(CASE WHEN x.change_pct <= -7 THEN 1 ELSE 0 END) AS extreme_down_count,
+                MAX(x.quote_time) AS asof_time
+             FROM (
+                SELECT mq.symbol, mq.change_pct, mq.quote_time
+                FROM market_quotes mq
+                INNER JOIN (
+                    SELECT symbol, market, MAX(id) AS max_id
+                    FROM market_quotes
+                    WHERE market = 'A_STOCK_MAIN'
+                    GROUP BY symbol, market
+                ) latest ON latest.max_id = mq.id
+                WHERE mq.market = 'A_STOCK_MAIN'
+                  AND mq.symbol REGEXP '^(000|001|002|003|600|601|603|605)[0-9]{3}$'
+             ) x"
+        )->fetch() ?: [];
+
+        $totalCount = max(0, (int) ($marketAgg['total_count'] ?? 0));
+        $upCount = max(0, (int) ($marketAgg['up_count'] ?? 0));
+        $downCount = max(0, (int) ($marketAgg['down_count'] ?? 0));
+        $flatCount = max(0, (int) ($marketAgg['flat_count'] ?? 0));
+        $avgChangePct = $this->toFloat($marketAgg['avg_change_pct'] ?? null) ?? 0.0;
+        $strongUpCount = max(0, (int) ($marketAgg['strong_up_count'] ?? 0));
+        $extremeUpCount = max(0, (int) ($marketAgg['extreme_up_count'] ?? 0));
+        $strongDownCount = max(0, (int) ($marketAgg['strong_down_count'] ?? 0));
+        $extremeDownCount = max(0, (int) ($marketAgg['extreme_down_count'] ?? 0));
+        $asofTime = (string) ($marketAgg['asof_time'] ?? '');
+
+        $upRatio = $totalCount > 0 ? $upCount / $totalCount : 0.0;
+        $downRatio = $totalCount > 0 ? $downCount / $totalCount : 0.0;
+
+        $latestTradeDate = (string) ($pdo->query('SELECT MAX(trade_date) FROM market_close_rankings')->fetchColumn() ?: '');
+        $runStats = [
+            'trade_date' => $latestTradeDate !== '' ? $latestTradeDate : null,
+            'sample_count' => 0,
+            'short_runup_count' => 0,
+            'short_drawdown_count' => 0,
+        ];
+
+        if ($latestTradeDate !== '') {
+            $runStmt = $pdo->prepare(
+                "SELECT
+                    COUNT(*) AS sample_count,
+                    SUM(CASE WHEN COALESCE(change_3d_pct, 0) >= 20 OR COALESCE(change_5d_pct, 0) >= 30 THEN 1 ELSE 0 END) AS short_runup_count,
+                    SUM(CASE WHEN COALESCE(change_3d_pct, 0) <= -15 OR COALESCE(change_5d_pct, 0) <= -22 THEN 1 ELSE 0 END) AS short_drawdown_count
+                 FROM market_close_rankings
+                 WHERE trade_date = :trade_date AND rank_type = 'strong'"
+            );
+            $runStmt->execute(['trade_date' => $latestTradeDate]);
+            $runRow = $runStmt->fetch() ?: [];
+            $runStats['sample_count'] = max(0, (int) ($runRow['sample_count'] ?? 0));
+            $runStats['short_runup_count'] = max(0, (int) ($runRow['short_runup_count'] ?? 0));
+            $runStats['short_drawdown_count'] = max(0, (int) ($runRow['short_drawdown_count'] ?? 0));
+        }
+
+        $latestSectorTime = (string) ($pdo->query('SELECT MAX(sample_time) FROM sector_strength')->fetchColumn() ?: '');
+        $sectorHotRows = [];
+        $sectorWeakRows = [];
+        $sectorOverheatCount = 0;
+        $sectorOversoldCount = 0;
+        if ($latestSectorTime !== '') {
+            $hotStmt = $pdo->prepare(
+                "SELECT sector_name, strength_score, change_pct, active_count
+                 FROM sector_strength
+                 WHERE sample_time = :sample_time
+                 ORDER BY change_pct DESC, strength_score DESC
+                 LIMIT 6"
+            );
+            $hotStmt->execute(['sample_time' => $latestSectorTime]);
+            $sectorHotRows = $hotStmt->fetchAll() ?: [];
+
+            $weakStmt = $pdo->prepare(
+                "SELECT sector_name, strength_score, change_pct, active_count
+                 FROM sector_strength
+                 WHERE sample_time = :sample_time
+                 ORDER BY change_pct ASC, strength_score ASC
+                 LIMIT 6"
+            );
+            $weakStmt->execute(['sample_time' => $latestSectorTime]);
+            $sectorWeakRows = $weakStmt->fetchAll() ?: [];
+
+            $countStmt = $pdo->prepare(
+                "SELECT
+                    SUM(CASE WHEN COALESCE(change_pct, 0) >= 5 THEN 1 ELSE 0 END) AS overheat_count,
+                    SUM(CASE WHEN COALESCE(change_pct, 0) <= -4 THEN 1 ELSE 0 END) AS oversold_count
+                 FROM sector_strength
+                 WHERE sample_time = :sample_time"
+            );
+            $countStmt->execute(['sample_time' => $latestSectorTime]);
+            $countRow = $countStmt->fetch() ?: [];
+            $sectorOverheatCount = max(0, (int) ($countRow['overheat_count'] ?? 0));
+            $sectorOversoldCount = max(0, (int) ($countRow['oversold_count'] ?? 0));
+        }
+
+        $isOverheat = ($upRatio >= 0.74 && $avgChangePct >= 1.2)
+            || $strongUpCount >= 20
+            || $extremeUpCount >= 8
+            || ((int) $runStats['short_runup_count'] >= 24);
+        $isPanicRisk = ($downRatio >= 0.72 && $avgChangePct <= -1.1)
+            || $strongDownCount >= 20
+            || $extremeDownCount >= 8;
+        $isOversold = ($downRatio >= 0.82 && $avgChangePct <= -1.8)
+            || $extremeDownCount >= 12
+            || ((int) $runStats['short_drawdown_count'] >= 20)
+            || $sectorOversoldCount >= 10;
+
+        $mode = 'neutral';
+        if ($isOverheat) {
+            $mode = 'overheat';
+        } elseif ($isOversold) {
+            $mode = 'oversold';
+        } elseif ($isPanicRisk) {
+            $mode = 'risk';
+        }
+
+        $title = '市场热度中性';
+        $summary = '情绪暂时均衡，保持节奏执行即可。';
+        $actionTip = '遵守定时策略，不追涨不恐慌。';
+        if ($mode === 'overheat') {
+            $title = '短期过热提醒';
+            $summary = '短线涨幅与强势数量偏高，追高性价比下降。';
+            $actionTip = '保持冷静，优先分批兑现与控制仓位。';
+        } elseif ($mode === 'oversold') {
+            $title = '超跌信号提醒';
+            $summary = '短线下跌范围与幅度偏大，情绪接近冰点。';
+            $actionTip = '避免情绪化割肉，等待分时企稳后按策略分批应对。';
+        } elseif ($mode === 'risk') {
+            $title = '风险扩散提醒';
+            $summary = '下跌家数明显占优，盘面承接偏弱。';
+            $actionTip = '先守纪律和仓位，等待市场确认再出手。';
+        }
+
+        $heatScore = $this->clamp(50.0 + $avgChangePct * 8.0 + ($upRatio - 0.5) * 70.0, 0.0, 100.0);
+
+        $alerts = [];
+        if ($isOverheat) {
+            $alerts[] = [
+                'level' => 'risk',
+                'title' => '短线过热',
+                'message' => '大涨家数偏多，短线波动放大，避免追高。',
+            ];
+        }
+        if ($isPanicRisk) {
+            $alerts[] = [
+                'level' => 'risk',
+                'title' => '风险扩散',
+                'message' => '下跌家数占优，盘中回撤可能反复。',
+            ];
+        }
+        if ($isOversold) {
+            $alerts[] = [
+                'level' => 'oversold',
+                'title' => '超跌观察',
+                'message' => '短线情绪偏冷，关注企稳反抽信号，避免情绪化操作。',
+            ];
+        }
+        if ($alerts === []) {
+            $alerts[] = [
+                'level' => 'info',
+                'title' => '节奏正常',
+                'message' => '按既定计划执行，优先等待明确信号。',
+            ];
+        }
+
+        $this->ok([
+            'generated_at' => now_sql(),
+            'mode' => $mode,
+            'title' => $title,
+            'summary' => $summary,
+            'action_tip' => $actionTip,
+            'heat_score' => round($heatScore, 2),
+            'market' => [
+                'asof_time' => $asofTime !== '' ? $asofTime : null,
+                'total_count' => $totalCount,
+                'up_count' => $upCount,
+                'down_count' => $downCount,
+                'flat_count' => $flatCount,
+                'up_ratio' => round($upRatio, 4),
+                'down_ratio' => round($downRatio, 4),
+                'avg_change_pct' => round($avgChangePct, 4),
+                'strong_up_count' => $strongUpCount,
+                'extreme_up_count' => $extremeUpCount,
+                'strong_down_count' => $strongDownCount,
+                'extreme_down_count' => $extremeDownCount,
+            ],
+            'short_term' => $runStats,
+            'sectors' => [
+                'sample_time' => $latestSectorTime !== '' ? $latestSectorTime : null,
+                'overheat_count' => $sectorOverheatCount,
+                'oversold_count' => $sectorOversoldCount,
+                'hottest' => $sectorHotRows,
+                'weakest' => $sectorWeakRows,
+            ],
+            'alerts' => $alerts,
+        ]);
+    }
+
     public function news(): void
     {
         $limit = max(1, min(200, (int) $this->query('limit', 50)));
@@ -183,5 +403,18 @@ final class MarketController extends BaseController
 
         AuditService::log('market.theme.delete', 'market_theme', (string) $id, []);
         $this->ok(['id' => $id]);
+    }
+
+    private function toFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '' || !is_numeric($value)) {
+            return null;
+        }
+        return (float) $value;
+    }
+
+    private function clamp(float $value, float $min, float $max): float
+    {
+        return max($min, min($max, $value));
     }
 }

@@ -71,7 +71,9 @@ $router->add('POST', '/api/openclaw/cron/queue/flush', static fn() => $cron->flu
 
 $router->add('GET', '/api/market/sectors/strength', static fn() => $market->sectorsStrength(), 'auth');
 $router->add('GET', '/api/market/watchlist/candidates', static fn() => $market->watchlistCandidates(), 'auth');
+$router->add('GET', '/api/market/heat-alert', static fn() => $market->heatAlert(), 'auth');
 $router->add('GET', '/api/market/close-rankings', static fn() => $market->closeRankings(), 'auth');
+$router->add('GET', '/api/market/opportunities', static fn() => $market->opportunities(), 'auth');
 $router->add('GET', '/api/market/themes/overview', static fn() => $market->themesOverview(), 'auth');
 $router->add('POST', '/api/market/themes', static fn() => $market->storeTheme(), 'auth');
 $router->add('PUT', '/api/market/themes/{id}', static fn(array $p) => $market->updateTheme($p), 'auth');

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>午盘机会池 | OpenClaw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260417-colorrule" />
+  <link rel="stylesheet" href="/assets/css/focus-pages.css?v=20260422-opportunities-v1" />
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="focus-shell">
+    <header class="focus-top">
+      <div>
+        <h1 class="focus-title">午盘机会池</h1>
+        <p class="focus-sub">聚焦主板强支撑或短涨小回调且放量标的，最多展示 30 只</p>
+      </div>
+      <div class="focus-actions">
+        <button id="openDashboardBtn" class="btn ghost" type="button">总面板</button>
+        <button id="openPositionsBtn" class="btn ghost" type="button">持仓雷达</button>
+        <button id="openWatchlistBtn" class="btn ghost" type="button">热门关注</button>
+        <button id="openSectorsBtn" class="btn ghost" type="button">板块雷达</button>
+        <button id="syncRefreshBtn" class="btn" type="button">同步并刷新</button>
+        <button id="refreshBtn" class="btn ghost" type="button">刷新</button>
+        <button id="logoutBtn" class="btn danger" type="button">退出</button>
+      </div>
+    </header>
+
+    <section id="opKpi" class="focus-grid"></section>
+
+    <section class="focus-layout">
+      <section class="focus-board">
+        <section class="focus-panel">
+          <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+            <h3 style="margin:0;">持仓午盘分析</h3>
+            <span id="posStamp" class="chip">-</span>
+          </div>
+          <div id="positionList" class="focus-list compact"></div>
+        </section>
+
+        <section class="focus-panel">
+          <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+            <h3 style="margin:0;">热门关注分析</h3>
+            <span id="watchStamp" class="chip">-</span>
+          </div>
+          <div id="watchlistList" class="focus-list compact"></div>
+        </section>
+      </section>
+
+      <section class="focus-panel">
+        <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin:0;">主板机会池（最多 30）</h3>
+          <span id="opStamp" class="chip">-</span>
+        </div>
+        <div class="notice">自动更新规则：仅交易时段，每 1 小时触发一次“同步+刷新”。</div>
+        <div id="opportunityList" class="focus-list" style="margin-top: 10px;"></div>
+      </section>
+    </section>
+  </main>
+
+  <template id="toastTpl"><div class="toast"></div></template>
+  <script src="/assets/js/opportunities-page.js?v=20260422-opportunities-v1" type="module"></script>
+</body>
+</html>

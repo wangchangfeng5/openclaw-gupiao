@@ -453,6 +453,7 @@ function wireActions() {
   $('#openDashboardBtn')?.addEventListener('click', () => openExternalPage('/'));
   $('#openPositionsBtn')?.addEventListener('click', () => openExternalPage('/positions.html'));
   $('#openWatchlistBtn')?.addEventListener('click', () => openExternalPage('/watchlist.html'));
+  $('#openOpportunitiesBtn')?.addEventListener('click', () => openExternalPage('/opportunities.html'));
 
   $('#syncNowBtn')?.addEventListener('click', async () => {
     await loadData(true).catch((e) => showToast(e.message));

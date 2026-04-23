@@ -937,6 +937,11 @@ function wireActions() {
     e.stopPropagation();
     openExternalPage('/sectors.html');
   });
+  $('#openOpportunitiesBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openExternalPage('/opportunities.html');
+  });
   $('#openHealthBtn')?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();

@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/css/app.css?v=20260417-colorrule" />
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260423-heat-alert" />
 </head>
 <body>
   <div class="bg-grid"></div>
@@ -24,6 +24,7 @@
         <button id="openPositionsPageBtn" class="btn ghost" type="button">持仓独立页</button>
         <button id="openWatchlistPageBtn" class="btn ghost" type="button">热门股独立页</button>
         <button id="openSectorsPageBtn" class="btn ghost" type="button">板块雷达</button>
+        <button id="openOpportunitiesPageBtn" class="btn ghost" type="button">午盘机会池</button>
         <button id="openHealthPageBtn" class="btn ghost" type="button">系统健康中心</button>
         <span id="userBadge" class="chip hidden"></span>
         <span id="syncStatus" class="chip hidden"></span>
@@ -54,6 +55,14 @@
           <span class="chip" id="riskStamp">实时</span>
         </div>
         <div id="riskBoard" class="risk-board"></div>
+      </section>
+
+      <section class="panel section heat-panel">
+        <div class="section-head">
+          <h2>市场热度与冷静提醒</h2>
+          <span class="chip" id="marketHeatStamp">-</span>
+        </div>
+        <div id="marketHeatBoard" class="heat-board"></div>
       </section>
 
       <section class="panel section">
@@ -285,6 +294,6 @@
     <div class="toast"></div>
   </template>
 
-  <script src="/assets/js/app.js?v=20260417-close-rank" type="module"></script>
+  <script src="/assets/js/app.js?v=20260423-heat-alert" type="module"></script>
 </body>
 </html>
