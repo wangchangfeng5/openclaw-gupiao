@@ -151,18 +151,12 @@ final class SectorThemeService
     private function loadLatestQuotes(int $limit): array
     {
         $stmt = Database::connection()->prepare(
-            'SELECT mq.symbol, mq.market, mq.name, mq.sector_name, mq.trend_direction, mq.price, mq.change_pct, mq.volume, mq.quote_time
-             FROM market_quotes mq
-             INNER JOIN (
-               SELECT symbol, market, MAX(id) AS max_id
-               FROM market_quotes
-               WHERE market = :market
-                 AND quote_time >= DATE_SUB(NOW(), INTERVAL 15 DAY)
-               GROUP BY symbol, market
-             ) latest ON latest.max_id = mq.id
-             WHERE mq.market = :market
-               AND mq.price IS NOT NULL
-             ORDER BY mq.change_pct DESC, mq.volume DESC, mq.id DESC
+            'SELECT symbol, market, name, sector_name, trend_direction, price, change_pct, volume, quote_time
+             FROM market_quotes_latest
+             WHERE market = :market
+               AND quote_time >= DATE_SUB(NOW(), INTERVAL 15 DAY)
+               AND price IS NOT NULL
+             ORDER BY change_pct DESC, volume DESC, symbol DESC
              LIMIT :limit'
         );
         $stmt->bindValue(':market', 'A_STOCK_MAIN');

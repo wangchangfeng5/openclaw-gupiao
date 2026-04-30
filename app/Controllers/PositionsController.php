@@ -138,6 +138,287 @@ final class PositionsController extends BaseController
         ]);
     }
 
+    public function industryAllocation(): void
+    {
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare(
+            "SELECT
+                p.symbol, p.market, p.name, p.quantity, p.cost_price, p.current_price, p.status,
+                q.sector_name, q.price AS quote_price, q.quote_time
+             FROM positions p
+             LEFT JOIN market_quotes_latest q
+                ON q.symbol = p.symbol AND q.market = p.market
+             WHERE p.user_id = :user_id
+               AND p.quantity > 0
+               AND p.status IN ('holding', 'watching')
+             ORDER BY p.updated_at DESC, p.id DESC"
+        );
+        $stmt->execute(['user_id' => $this->userId()]);
+        $rows = $stmt->fetchAll() ?: [];
+
+        $sectors = [];
+        $totalMarketValue = 0.0;
+        $latestQuoteTime = '';
+        $includedPositionCount = 0;
+        foreach ($rows as $row) {
+            $qty = max(0.0, (float) ($row['quantity'] ?? 0));
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $quotePrice = (float) ($row['quote_price'] ?? 0);
+            $positionPrice = (float) ($row['current_price'] ?? 0);
+            $costPrice = (float) ($row['cost_price'] ?? 0);
+            $price = $quotePrice > 0 ? $quotePrice : ($positionPrice > 0 ? $positionPrice : $costPrice);
+            if ($price <= 0) {
+                continue;
+            }
+            $includedPositionCount += 1;
+
+            $sectorName = trim((string) ($row['sector_name'] ?? ''));
+            if ($sectorName === '') {
+                $sectorName = '未知行业';
+            }
+
+            $marketValue = $qty * $price;
+            $totalMarketValue += $marketValue;
+
+            $quoteTime = trim((string) ($row['quote_time'] ?? ''));
+            if ($quoteTime !== '' && strcmp($quoteTime, $latestQuoteTime) > 0) {
+                $latestQuoteTime = $quoteTime;
+            }
+
+            if (!isset($sectors[$sectorName])) {
+                $sectors[$sectorName] = [
+                    'sector_name' => $sectorName,
+                    'market_value' => 0.0,
+                    'stock_count' => 0,
+                    'symbols' => [],
+                ];
+            }
+
+            $sectors[$sectorName]['market_value'] += $marketValue;
+            $sectors[$sectorName]['stock_count'] += 1;
+            $sectors[$sectorName]['symbols'][] = [
+                'symbol' => (string) ($row['symbol'] ?? ''),
+                'name' => (string) ($row['name'] ?? ''),
+                'market_value' => round($marketValue, 4),
+            ];
+        }
+
+        $leadersSnapshot = $this->loadMainboardLeadersSnapshot(6000, 12, 3);
+
+        $result = array_values(array_map(
+            function (array $sector) use ($totalMarketValue, $leadersSnapshot): array {
+                $value = (float) ($sector['market_value'] ?? 0.0);
+                $sector['market_value'] = round($value, 4);
+                $sector['weight_pct'] = $totalMarketValue > 0
+                    ? round(($value / $totalMarketValue) * 100, 4)
+                    : 0.0;
+
+                $symbols = is_array($sector['symbols'] ?? null) ? $sector['symbols'] : [];
+                usort(
+                    $symbols,
+                    static fn(array $a, array $b): int => (float) ($b['market_value'] ?? 0) <=> (float) ($a['market_value'] ?? 0)
+                );
+                $symbols = array_map(
+                    function (array $x) use ($value): array {
+                        $mv = (float) ($x['market_value'] ?? 0);
+                        $x['weight_in_sector_pct'] = $value > 0 ? round(($mv / $value) * 100, 4) : 0.0;
+                        return $x;
+                    },
+                    $symbols
+                );
+                $sector['symbols'] = $symbols;
+                $fallbackSymbol = isset($symbols[0]['symbol']) ? (string) $symbols[0]['symbol'] : '';
+                $sector['sector_mainboard_leaders'] = $this->resolveSectorLeaders(
+                    (string) ($sector['sector_name'] ?? ''),
+                    $leadersSnapshot['by_sector'] ?? [],
+                    3,
+                    $fallbackSymbol,
+                    $leadersSnapshot['by_symbol'] ?? [],
+                    $leadersSnapshot['global'] ?? []
+                );
+
+                return $sector;
+            },
+            $sectors
+        ));
+
+        usort(
+            $result,
+            static fn(array $a, array $b): int => (float) ($b['market_value'] ?? 0) <=> (float) ($a['market_value'] ?? 0)
+        );
+
+        $this->ok([
+            'total_market_value' => round($totalMarketValue, 4),
+            'position_count' => $includedPositionCount,
+            'sector_count' => count($result),
+            'basis' => 'market_value',
+            'latest_quote_time' => $latestQuoteTime !== '' ? $latestQuoteTime : null,
+            'leaders_trade_date' => $leadersSnapshot['trade_date'],
+            'mainboard_leaders' => $leadersSnapshot['global'],
+            'sectors' => $result,
+            'generated_at' => now_sql(),
+        ]);
+    }
+
+    /**
+     * @return array{
+     *   trade_date:?string,
+     *   global:array<int, array<string, mixed>>,
+     *   by_sector:array<string, array<int, array<string, mixed>>>,
+     *   by_symbol:array<string, array<string, mixed>>
+     * }
+     */
+    private function loadMainboardLeadersSnapshot(int $scanLimit = 1200, int $globalLimit = 12, int $sectorLimit = 3): array
+    {
+        $pdo = Database::connection();
+        $tradeDate = (string) ($pdo->query("SELECT MAX(trade_date) FROM market_close_rankings WHERE rank_type = 'strong'")->fetchColumn() ?: '');
+        if ($tradeDate === '') {
+            return [
+                'trade_date' => null,
+                'global' => [],
+                'by_sector' => [],
+                'by_symbol' => [],
+            ];
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT
+                r.symbol,
+                r.market,
+                r.name,
+                COALESCE(NULLIF(TRIM(r.sector_name), ''), q.sector_name, '') AS sector_name,
+                r.rank_no,
+                r.change_1d_pct,
+                r.change_3d_pct,
+                r.change_5d_pct,
+                r.snapshot_time
+             FROM market_close_rankings r
+             LEFT JOIN market_quotes_latest q
+                ON q.symbol = r.symbol AND q.market = 'A_STOCK_MAIN'
+             WHERE r.rank_type = 'strong'
+               AND r.trade_date = :trade_date
+               AND r.symbol REGEXP '^(000|001|002|003|600|601|603|605)[0-9]{3}$'
+             ORDER BY COALESCE(r.change_3d_pct, -999) DESC, COALESCE(r.change_1d_pct, -999) DESC, r.rank_no ASC
+             LIMIT :limit"
+        );
+        $stmt->bindValue(':trade_date', $tradeDate);
+        $stmt->bindValue(':limit', max(100, min(5000, $scanLimit)), \PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll() ?: [];
+
+        $mapped = array_map(
+            static fn(array $row): array => [
+                'symbol' => (string) ($row['symbol'] ?? ''),
+                'market' => (string) ($row['market'] ?? ''),
+                'name' => (string) ($row['name'] ?? ''),
+                'sector_name' => (string) ($row['sector_name'] ?? ''),
+                'rank_no' => $row['rank_no'] ?? null,
+                'change_1d_pct' => $row['change_1d_pct'] ?? null,
+                'change_3d_pct' => $row['change_3d_pct'] ?? null,
+                'change_5d_pct' => $row['change_5d_pct'] ?? null,
+                'snapshot_time' => $row['snapshot_time'] ?? null,
+            ],
+            $rows
+        );
+
+        $global = array_slice($mapped, 0, max(1, min(30, $globalLimit)));
+
+        $bySector = [];
+        $bySymbol = [];
+        foreach ($mapped as $row) {
+            $symbol = strtoupper(trim((string) ($row['symbol'] ?? '')));
+            if ($symbol !== '' && !isset($bySymbol[$symbol])) {
+                $bySymbol[$symbol] = $row;
+            }
+            $sectorName = trim((string) ($row['sector_name'] ?? ''));
+            if ($sectorName === '') {
+                continue;
+            }
+            if (!isset($bySector[$sectorName])) {
+                $bySector[$sectorName] = [];
+            }
+            if (count($bySector[$sectorName]) >= max(1, min(10, $sectorLimit))) {
+                continue;
+            }
+            $bySector[$sectorName][] = $row;
+        }
+
+        return [
+            'trade_date' => $tradeDate,
+            'global' => array_values($global),
+            'by_sector' => $bySector,
+            'by_symbol' => $bySymbol,
+        ];
+    }
+
+    /**
+     * @param array<string, array<int, array<string, mixed>>> $bySector
+     * @param array<string, array<string, mixed>> $bySymbol
+     * @param array<int, array<string, mixed>> $globalFallback
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveSectorLeaders(
+        string $sectorName,
+        array $bySector,
+        int $limit = 3,
+        string $fallbackSymbol = '',
+        array $bySymbol = [],
+        array $globalFallback = []
+    ): array
+    {
+        $name = $this->normalizeSectorName($sectorName);
+        if ($name !== '' && $bySector !== []) {
+            if (isset($bySector[$sectorName])) {
+                return array_slice($bySector[$sectorName], 0, $limit);
+            }
+
+            foreach ($bySector as $candidateName => $leaders) {
+                $candidate = $this->normalizeSectorName((string) $candidateName);
+                if ($candidate === '') {
+                    continue;
+                }
+                if (str_contains($candidate, $name) || str_contains($name, $candidate)) {
+                    return array_slice($leaders, 0, $limit);
+                }
+            }
+        }
+
+        $picked = [];
+        $seen = [];
+
+        $symbol = strtoupper(trim($fallbackSymbol));
+        if ($symbol !== '' && isset($bySymbol[$symbol])) {
+            $picked[] = $bySymbol[$symbol];
+            $seen[$symbol] = true;
+        }
+
+        foreach ($globalFallback as $row) {
+            $s = strtoupper(trim((string) ($row['symbol'] ?? '')));
+            if ($s === '' || isset($seen[$s])) {
+                continue;
+            }
+            $picked[] = $row;
+            $seen[$s] = true;
+            if (count($picked) >= $limit) {
+                break;
+            }
+        }
+
+        return array_slice($picked, 0, $limit);
+    }
+
+    private function normalizeSectorName(string $name): string
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return '';
+        }
+        return (string) preg_replace('/\s+/u', '', $name);
+    }
+
     public function detail(array $params): void
     {
         $id = (int) ($params['id'] ?? 0);

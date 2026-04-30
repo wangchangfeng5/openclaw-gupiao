@@ -10,6 +10,7 @@ final class PositionDetailService
 {
     private SymbolInsightService $insight;
     private WatchlistRankingService $ranking;
+    private ?bool $hasInsightsLatestTable = null;
 
     public function __construct(?SymbolInsightService $insight = null, ?WatchlistRankingService $ranking = null)
     {
@@ -105,23 +106,7 @@ final class PositionDetailService
                 ) latest ON latest.max_id = x.id
                 WHERE x.user_id = :user_id_lt
              ) lt ON lt.position_id = p.id
-             LEFT JOIN (
-                SELECT mq1.symbol,
-                       mq1.market,
-                       mq1.name,
-                       mq1.sector_name,
-                       mq1.trend_direction,
-                       mq1.price,
-                       mq1.change_pct,
-                       mq1.volume,
-                       mq1.quote_time
-                FROM market_quotes mq1
-                INNER JOIN (
-                    SELECT symbol, market, MAX(id) AS max_id
-                    FROM market_quotes
-                    GROUP BY symbol, market
-                ) latest_q ON latest_q.max_id = mq1.id
-             ) q ON q.symbol = p.symbol AND q.market = p.market
+             LEFT JOIN market_quotes_latest q ON q.symbol = p.symbol AND q.market = p.market
              WHERE p.id = :id AND p.user_id = :user_id
              LIMIT 1"
         );
@@ -441,14 +426,9 @@ final class PositionDetailService
         }
 
         $sql = sprintf(
-            'SELECT mq1.symbol, mq1.name, mq1.price, mq1.change_pct, mq1.volume, mq1.quote_time, mq1.trend_direction
-             FROM market_quotes mq1
-             INNER JOIN (
-                SELECT symbol, market, MAX(id) AS max_id
-                FROM market_quotes
-                WHERE market = :market AND symbol IN (%s)
-                GROUP BY symbol, market
-             ) latest_q ON latest_q.max_id = mq1.id',
+            'SELECT symbol, name, price, change_pct, volume, quote_time, trend_direction
+             FROM market_quotes_latest
+             WHERE market = :market AND symbol IN (%s)',
             implode(', ', $placeholders)
         );
 
@@ -475,50 +455,70 @@ final class PositionDetailService
      */
     private function loadSectorWatchlistPicks(int $userId, string $sectorName, string $excludeSymbol, int $limit): array
     {
-        $sql = 'SELECT w.*,
-                       wi.current_price,
-                       wi.support_price,
-                       wi.resistance_price,
-                       wi.stop_loss_price,
-                       wi.take_profit_price,
-                       wi.position_zone,
-                       wi.action_advice,
-                       wi.confidence,
-                       wi.openclaw_note,
-                       wi.analyzed_at,
-                       wi.next_review_at,
-                       q.price AS latest_price,
-                       q.change_pct,
-                       q.volume AS latest_volume,
-                       q.quote_time
-                FROM watchlist w
-                LEFT JOIN (
-                   SELECT x.*
-                   FROM watchlist_insights x
-                   INNER JOIN (
-                       SELECT watchlist_id, MAX(id) AS max_id
-                       FROM watchlist_insights
-                       WHERE user_id = :user_id_latest
-                       GROUP BY watchlist_id
-                   ) latest ON latest.max_id = x.id
-                   WHERE x.user_id = :user_id_insight
-                ) wi ON wi.watchlist_id = w.id
-                LEFT JOIN (
-                   SELECT mq1.symbol, mq1.market, mq1.price, mq1.change_pct, mq1.volume, mq1.quote_time
-                   FROM market_quotes mq1
-                   INNER JOIN (
-                       SELECT symbol, market, MAX(id) AS max_id
-                       FROM market_quotes
-                       GROUP BY symbol, market
-                   ) latest_q ON latest_q.max_id = mq1.id
-                ) q ON q.symbol = w.symbol AND q.market = w.market
-                WHERE w.user_id = :user_id AND w.status = \'active\'';
+        if ($this->hasWatchlistInsightsLatestTable()) {
+            $sql = 'SELECT w.*,
+                           wi.current_price,
+                           wi.support_price,
+                           wi.resistance_price,
+                           wi.stop_loss_price,
+                           wi.take_profit_price,
+                           wi.position_zone,
+                           wi.action_advice,
+                           wi.confidence,
+                           wi.openclaw_note,
+                           wi.analyzed_at,
+                           wi.next_review_at,
+                           q.price AS latest_price,
+                           q.change_pct,
+                           q.volume AS latest_volume,
+                           q.quote_time
+                    FROM watchlist w
+                    LEFT JOIN watchlist_insights_latest wi ON wi.watchlist_id = w.id AND wi.user_id = :user_id_insight
+                    LEFT JOIN market_quotes_latest q ON q.symbol = w.symbol AND q.market = w.market
+                    WHERE w.user_id = :user_id AND w.status = \'active\'';
 
-        $bindings = [
-            'user_id_latest' => $userId,
-            'user_id_insight' => $userId,
-            'user_id' => $userId,
-        ];
+            $bindings = [
+                'user_id_insight' => $userId,
+                'user_id' => $userId,
+            ];
+        } else {
+            $sql = 'SELECT w.*,
+                           wi.current_price,
+                           wi.support_price,
+                           wi.resistance_price,
+                           wi.stop_loss_price,
+                           wi.take_profit_price,
+                           wi.position_zone,
+                           wi.action_advice,
+                           wi.confidence,
+                           wi.openclaw_note,
+                           wi.analyzed_at,
+                           wi.next_review_at,
+                           q.price AS latest_price,
+                           q.change_pct,
+                           q.volume AS latest_volume,
+                           q.quote_time
+                    FROM watchlist w
+                    LEFT JOIN (
+                       SELECT x.*
+                       FROM watchlist_insights x
+                       INNER JOIN (
+                           SELECT watchlist_id, MAX(id) AS max_id
+                           FROM watchlist_insights
+                           WHERE user_id = :user_id_latest
+                           GROUP BY watchlist_id
+                       ) latest ON latest.max_id = x.id
+                       WHERE x.user_id = :user_id_insight
+                    ) wi ON wi.watchlist_id = w.id
+                    LEFT JOIN market_quotes_latest q ON q.symbol = w.symbol AND q.market = w.market
+                    WHERE w.user_id = :user_id AND w.status = \'active\'';
+
+            $bindings = [
+                'user_id_latest' => $userId,
+                'user_id_insight' => $userId,
+                'user_id' => $userId,
+            ];
+        }
 
         if ($sectorName !== '') {
             $keyword = mb_substr($sectorName, 0, max(2, min(6, mb_strlen($sectorName))));
@@ -591,17 +591,11 @@ final class PositionDetailService
 
         $keyword = mb_substr($sectorName, 0, max(2, min(6, mb_strlen($sectorName))));
         $stmt = Database::connection()->prepare(
-            'SELECT mq1.symbol, mq1.market, mq1.name, mq1.sector_name, mq1.trend_direction, mq1.price, mq1.change_pct, mq1.volume, mq1.quote_time
-             FROM market_quotes mq1
-             INNER JOIN (
-                SELECT symbol, market, MAX(id) AS max_id
-                FROM market_quotes
-                WHERE market = :market
-                GROUP BY symbol, market
-             ) latest_q ON latest_q.max_id = mq1.id
-             WHERE mq1.market = :market
-               AND (mq1.sector_name = :sector_name OR mq1.sector_name LIKE :keyword)
-             ORDER BY mq1.change_pct DESC, mq1.volume DESC, mq1.id DESC
+            'SELECT symbol, market, name, sector_name, trend_direction, price, change_pct, volume, quote_time
+             FROM market_quotes_latest
+             WHERE market = :market
+               AND (sector_name = :sector_name OR sector_name LIKE :keyword)
+             ORDER BY change_pct DESC, volume DESC, symbol DESC
              LIMIT :limit'
         );
         $stmt->bindValue(':market', $market);
@@ -661,15 +655,7 @@ final class PositionDetailService
                        q.change_pct,
                        q.quote_time
                 FROM positions p
-                LEFT JOIN (
-                   SELECT mq1.symbol, mq1.market, mq1.name, mq1.sector_name, mq1.trend_direction, mq1.price, mq1.change_pct, mq1.quote_time
-                   FROM market_quotes mq1
-                   INNER JOIN (
-                       SELECT symbol, market, MAX(id) AS max_id
-                       FROM market_quotes
-                       GROUP BY symbol, market
-                   ) latest_q ON latest_q.max_id = mq1.id
-                ) q ON q.symbol = p.symbol AND q.market = p.market
+                LEFT JOIN market_quotes_latest q ON q.symbol = p.symbol AND q.market = p.market
                 WHERE p.user_id = :user_id
                   AND p.id <> :position_id
                   AND p.symbol <> :exclude_symbol
@@ -795,20 +781,33 @@ final class PositionDetailService
             return [];
         }
 
+        $limit = max(1, min(20, $limit));
+        $scanLimit = max(40, min(480, $limit * 12));
         $stmt = Database::connection()->prepare(
-            'SELECT id, content, confidence, tags_json, suggested_at, status
+            'SELECT id, content, confidence, tags_json, suggested_at, status, symbols_json
              FROM openclaw_suggestions
              WHERE user_id = :user_id
-               AND JSON_CONTAINS(symbols_json, JSON_QUOTE(:symbol))
              ORDER BY suggested_at DESC, id DESC
              LIMIT :limit'
         );
         $stmt->bindValue(':user_id', $userId, \PDO::PARAM_INT);
-        $stmt->bindValue(':symbol', $symbol);
-        $stmt->bindValue(':limit', max(1, min(20, $limit)), \PDO::PARAM_INT);
+        $stmt->bindValue(':limit', $scanLimit, \PDO::PARAM_INT);
         $stmt->execute();
 
-        return $stmt->fetchAll() ?: [];
+        $rows = $stmt->fetchAll() ?: [];
+        $hits = [];
+        foreach ($rows as $row) {
+            if (!$this->suggestionContainsSymbol($row['symbols_json'] ?? null, $symbol)) {
+                continue;
+            }
+            unset($row['symbols_json']);
+            $hits[] = $row;
+            if (count($hits) >= $limit) {
+                break;
+            }
+        }
+
+        return $hits;
     }
 
     /**
@@ -858,5 +857,56 @@ final class PositionDetailService
             return null;
         }
         return (float) $value;
+    }
+
+    private function suggestionContainsSymbol(mixed $symbolsJson, string $symbol): bool
+    {
+        $symbol = strtoupper(trim($symbol));
+        if ($symbol === '') {
+            return false;
+        }
+
+        if (is_string($symbolsJson)) {
+            $trimmed = trim($symbolsJson);
+            if ($trimmed !== '') {
+                $decoded = json_decode($trimmed, true);
+                if (is_array($decoded)) {
+                    $symbolsJson = $decoded;
+                } else {
+                    return strpos(strtoupper($trimmed), '"' . $symbol . '"') !== false;
+                }
+            }
+        }
+
+        if (!is_array($symbolsJson)) {
+            return false;
+        }
+
+        foreach ($symbolsJson as $item) {
+            if (!is_string($item)) {
+                continue;
+            }
+            if (strtoupper(trim($item)) === $symbol) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function hasWatchlistInsightsLatestTable(): bool
+    {
+        if ($this->hasInsightsLatestTable !== null) {
+            return $this->hasInsightsLatestTable;
+        }
+
+        $stmt = Database::connection()->query(
+            "SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = 'watchlist_insights_latest'"
+        );
+        $this->hasInsightsLatestTable = ((int) ($stmt->fetchColumn() ?: 0)) > 0;
+        return $this->hasInsightsLatestTable;
     }
 }

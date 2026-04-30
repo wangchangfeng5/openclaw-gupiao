@@ -90,6 +90,58 @@ def run_review_snapshot(root: Path, slot: str) -> int:
     return proc.returncode
 
 
+def daily_review_marker(root: Path) -> Path:
+    return root.parent / "storage" / "runtime" / "daily_review_close_last_date.txt"
+
+
+def should_run_daily_review(root: Path, now: datetime) -> bool:
+    marker = daily_review_marker(root)
+    if not marker.exists():
+        return True
+    try:
+        saved = marker.read_text(encoding="utf-8", errors="ignore").strip()
+    except Exception:
+        return True
+    return saved != now.strftime("%Y-%m-%d")
+
+
+def mark_daily_review_done(root: Path, now: datetime) -> None:
+    marker = daily_review_marker(root)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(now.strftime("%Y-%m-%d"), encoding="utf-8")
+
+
+def run_daily_review_snapshot(root: Path, slot: str = "close") -> int:
+    php_candidates = [
+        os.getenv("PHP_BIN", "").strip(),
+        os.getenv("PHP_PATH", "").strip(),
+        r"D:\phpstudy_pro\Extensions\php\php8.2.9nts\php.exe",
+        "php",
+    ]
+    php_bin = next((p for p in php_candidates if p), "php")
+    script = root.parent / "scripts" / "daily_review_snapshot.php"
+    if not script.exists():
+        print(f"daily review snapshot script missing: {script}")
+        return 1
+
+    proc = subprocess.run(
+        [
+            php_bin,
+            str(script),
+            f"--slot={slot}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    out = (proc.stdout or "").strip()
+    err = (proc.stderr or "").strip()
+    if out:
+        print(out)
+    if err:
+        print(err, file=sys.stderr)
+    return proc.returncode
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run invest panel workers with dynamic schedule")
     parser.add_argument("--once", action="store_true", help="Run workers once and exit")
@@ -127,6 +179,14 @@ def main() -> int:
                 mark_review_snapshot_done(root, "close", now)
             else:
                 print(f"review snapshot close failed with code {code}", file=sys.stderr)
+
+        if in_window(now, 15, 8, 15, 25) and should_run_daily_review(root, now):
+            print("trigger daily operation review: close")
+            code = run_daily_review_snapshot(root, "close")
+            if code == 0:
+                mark_daily_review_done(root, now)
+            else:
+                print(f"daily operation review close failed with code {code}", file=sys.stderr)
 
         interval = 60 if is_trading_time(now) else 900
         print(f"next run in {interval}s")

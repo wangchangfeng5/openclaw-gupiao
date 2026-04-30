@@ -9,6 +9,7 @@ use App\Core\Database;
 final class MarketOpportunityService
 {
     private WatchlistRankingService $rankingService;
+    private ?bool $hasInsightsLatestTable = null;
 
     /**
      * @var array<int, array<string, mixed>>
@@ -93,40 +94,50 @@ final class MarketOpportunityService
             return [];
         }
 
-        $stmt = Database::connection()->prepare(
-            "SELECT w.id, w.symbol, w.market, w.name, w.priority, w.status, w.sector_name,
-                    wi.support_price, wi.resistance_price, wi.position_zone, wi.action_advice,
-                    q.price AS latest_price, q.change_pct, q.volume AS latest_volume, q.turnover AS latest_turnover, q.quote_time
-             FROM watchlist w
-             LEFT JOIN (
-                SELECT x.*
-                FROM watchlist_insights x
-                INNER JOIN (
-                    SELECT watchlist_id, MAX(id) AS max_id
-                    FROM watchlist_insights
-                    WHERE user_id = :user_id_latest
-                    GROUP BY watchlist_id
-                ) latest ON latest.max_id = x.id
-                WHERE x.user_id = :user_id_insight
-             ) wi ON wi.watchlist_id = w.id
-             LEFT JOIN (
-                SELECT mq1.symbol, mq1.market, mq1.price, mq1.change_pct, mq1.volume, mq1.turnover, mq1.quote_time
-                FROM market_quotes mq1
-                INNER JOIN (
-                    SELECT symbol, market, MAX(id) AS max_id
-                    FROM market_quotes
-                    GROUP BY symbol, market
-                ) latest_q ON latest_q.max_id = mq1.id
-             ) q ON q.symbol = w.symbol AND q.market = w.market
-             WHERE w.user_id = :user_id AND w.status = 'active'
-             ORDER BY w.priority ASC, w.updated_at DESC
-             LIMIT 200"
-        );
-        $stmt->execute([
-            'user_id_latest' => $userId,
-            'user_id_insight' => $userId,
-            'user_id' => $userId,
-        ]);
+        if ($this->hasWatchlistInsightsLatestTable()) {
+            $stmt = Database::connection()->prepare(
+                "SELECT w.id, w.symbol, w.market, w.name, w.priority, w.status, w.sector_name,
+                        wi.support_price, wi.resistance_price, wi.position_zone, wi.action_advice,
+                        q.price AS latest_price, q.change_pct, q.volume AS latest_volume, q.turnover AS latest_turnover, q.quote_time
+                 FROM watchlist w
+                 LEFT JOIN watchlist_insights_latest wi ON wi.watchlist_id = w.id AND wi.user_id = :user_id_insight
+                 LEFT JOIN market_quotes_latest q ON q.symbol = w.symbol AND q.market = w.market
+                 WHERE w.user_id = :user_id AND w.status = 'active'
+                 ORDER BY w.priority ASC, w.updated_at DESC
+                 LIMIT 200"
+            );
+            $stmt->execute([
+                'user_id_insight' => $userId,
+                'user_id' => $userId,
+            ]);
+        } else {
+            $stmt = Database::connection()->prepare(
+                "SELECT w.id, w.symbol, w.market, w.name, w.priority, w.status, w.sector_name,
+                        wi.support_price, wi.resistance_price, wi.position_zone, wi.action_advice,
+                        q.price AS latest_price, q.change_pct, q.volume AS latest_volume, q.turnover AS latest_turnover, q.quote_time
+                 FROM watchlist w
+                 LEFT JOIN (
+                    SELECT x.*
+                    FROM watchlist_insights x
+                    INNER JOIN (
+                        SELECT watchlist_id, MAX(id) AS max_id
+                        FROM watchlist_insights
+                        WHERE user_id = :user_id_latest
+                        GROUP BY watchlist_id
+                    ) latest ON latest.max_id = x.id
+                    WHERE x.user_id = :user_id_insight
+                 ) wi ON wi.watchlist_id = w.id
+                 LEFT JOIN market_quotes_latest q ON q.symbol = w.symbol AND q.market = w.market
+                 WHERE w.user_id = :user_id AND w.status = 'active'
+                 ORDER BY w.priority ASC, w.updated_at DESC
+                 LIMIT 200"
+            );
+            $stmt->execute([
+                'user_id_latest' => $userId,
+                'user_id_insight' => $userId,
+                'user_id' => $userId,
+            ]);
+        }
 
         return $stmt->fetchAll() ?: [];
     }
@@ -137,17 +148,11 @@ final class MarketOpportunityService
     private function loadLatestMainBoardQuotes(): array
     {
         $stmt = Database::connection()->query(
-            "SELECT mq.symbol, mq.market, mq.name, mq.sector_name, mq.trend_direction, mq.price, mq.change_pct, mq.volume, mq.turnover, mq.quote_time
-             FROM market_quotes mq
-             INNER JOIN (
-                SELECT symbol, market, MAX(id) AS max_id
-                FROM market_quotes
-                WHERE market = 'A_STOCK_MAIN'
-                GROUP BY symbol, market
-             ) latest ON latest.max_id = mq.id
-             WHERE mq.market = 'A_STOCK_MAIN'
-               AND mq.symbol REGEXP '^(000|001|002|003|600|601|603|605)[0-9]{3}$'
-             ORDER BY mq.turnover DESC, mq.volume DESC, mq.id DESC
+            "SELECT symbol, market, name, sector_name, trend_direction, price, change_pct, volume, turnover, quote_time
+             FROM market_quotes_latest
+             WHERE market = 'A_STOCK_MAIN'
+               AND symbol REGEXP '^(000|001|002|003|600|601|603|605)[0-9]{3}$'
+             ORDER BY turnover DESC, volume DESC, symbol DESC
              LIMIT 260"
         );
         return $stmt->fetchAll() ?: [];
@@ -1078,5 +1083,21 @@ final class MarketOpportunityService
             return null;
         }
         return (float) $value;
+    }
+
+    private function hasWatchlistInsightsLatestTable(): bool
+    {
+        if ($this->hasInsightsLatestTable !== null) {
+            return $this->hasInsightsLatestTable;
+        }
+
+        $stmt = Database::connection()->query(
+            "SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = 'watchlist_insights_latest'"
+        );
+        $this->hasInsightsLatestTable = ((int) ($stmt->fetchColumn() ?: 0)) > 0;
+        return $this->hasInsightsLatestTable;
     }
 }

@@ -135,6 +135,34 @@ function fmtFlow(val) {
   return `${n >= 0 ? '+' : '-'}${num.toFixed(2)}${unit}`;
 }
 
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function textOr(value, fallback = '-') {
+  const text = String(value ?? '').trim();
+  return text === '' ? fallback : text;
+}
+
+function safeHttpUrl(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw, window.location.origin);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return '';
+    }
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
 function parseJson(value, fallback = []) {
   if (value === null || value === undefined || value === '') return fallback;
   if (Array.isArray(value) || typeof value === 'object') return value;
@@ -210,7 +238,7 @@ function renderKpi(kpi = {}) {
   ];
 
   node.innerHTML = cards
-    .map(([label, value]) => `<div class="kpi-card"><p>${label}</p><strong>${fmtNum(value)}</strong></div>`)
+    .map(([label, value]) => `<div class="kpi-card"><p>${escHtml(label)}</p><strong>${escHtml(fmtNum(value))}</strong></div>`)
     .join('');
 }
 
@@ -228,7 +256,7 @@ function renderRisk(risk = {}) {
   ];
 
   node.innerHTML = items
-    .map(([k, v]) => `<article class="risk-item"><small>${k}</small><b>${v}</b></article>`)
+    .map(([k, v]) => `<article class="risk-item"><small>${escHtml(k)}</small><b>${escHtml(v)}</b></article>`)
     .join('');
 }
 
@@ -263,16 +291,16 @@ function renderMarketHeat(data = {}) {
     const change = Number(row.change_pct || 0);
     const cls = change >= 5 ? 'overheat' : change <= -4 ? 'oversold' : fallbackClass;
     return `<div class="heat-line">
-      <span>${row.sector_name || '-'}</span>
+      <span>${escHtml(textOr(row.sector_name))}</span>
       <span class="heat-chip ${cls}">${fmtPct(change)}</span>
     </div>`;
   };
 
   node.innerHTML = `
     <article class="heat-banner mode-${mode}">
-      <h3>${data.title || '市场热度提醒'}</h3>
-      <p>${data.summary || '按既定策略执行，避免情绪化操作。'}</p>
-      <p class="tip">${data.action_tip || '保持冷静，跟随定时策略。'}</p>
+      <h3>${escHtml(textOr(data.title, '市场热度提醒'))}</h3>
+      <p>${escHtml(textOr(data.summary, '按既定策略执行，避免情绪化操作。'))}</p>
+      <p class="tip">${escHtml(textOr(data.action_tip, '保持冷静，跟随定时策略。'))}</p>
     </article>
 
     <div class="heat-metrics">
@@ -297,7 +325,7 @@ function renderMarketHeat(data = {}) {
 
     <div class="heat-notes">
       ${alerts
-        .map((item) => `<div class="heat-note"><strong>${item.title || '提醒'}</strong>${item.message || ''}</div>`)
+        .map((item) => `<div class="heat-note"><strong>${escHtml(textOr(item.title, '提醒'))}</strong>${escHtml(String(item.message ?? ''))}</div>`)
         .join('')}
     </div>
   `;
@@ -379,15 +407,15 @@ function renderCloseRankings() {
         .map(
           (r) => `<tr>
             <td>${fmtNum(r.rank_no)}</td>
-            <td>${r.symbol || '-'}</td>
-            <td>${r.name || '-'}</td>
-            <td>${r.sector_name || '-'}</td>
+            <td>${escHtml(textOr(r.symbol))}</td>
+            <td>${escHtml(textOr(r.name))}</td>
+            <td>${escHtml(textOr(r.sector_name))}</td>
             <td>${pctCell(r.change_1d_pct)}</td>
             <td>${pctCell(r.change_3d_pct)}</td>
             <td>${pctCell(r.change_5d_pct)}</td>
             <td>${pctCell(r.change_10d_pct)}</td>
             <td>${fmtFlow(r.net_main_inflow)}</td>
-            <td>${r.flow_direction || '-'}</td>
+            <td>${escHtml(textOr(r.flow_direction))}</td>
           </tr>`
         )
         .join('')}
@@ -426,14 +454,14 @@ function renderPositions(rows) {
       ${rows
         .map(
           (r) => `<tr>
-            <td>${r.symbol}</td>
-            <td>${r.name || '-'}</td>
+            <td>${escHtml(textOr(r.symbol))}</td>
+            <td>${escHtml(textOr(r.name))}</td>
             <td>${fmtNum(r.quantity)}</td>
             <td>${fmtNum(r.cost_price)}</td>
             <td>${fmtNum(r.current_price)}</td>
             <td>${fmtNum(r.stop_loss_price)}</td>
             <td>${fmtNum(r.take_profit_price)}</td>
-            <td>${r.status}</td>
+            <td>${escHtml(textOr(r.status))}</td>
           </tr>`
         )
         .join('')}
@@ -453,21 +481,28 @@ function renderSuggestions(rows) {
 
   node.innerHTML = rows
     .map(
-      (r) => `<article class="list-item">
-        <h4>#${r.id} 路 ${parseJson(r.tags_json, []).join(' / ') || '建议'}</h4>
-        <p>${r.content}</p>
+      (r) => {
+        const tags = parseJson(r.tags_json, [])
+          .map((x) => String(x ?? '').trim())
+          .filter(Boolean)
+          .map((x) => escHtml(x))
+          .join(' / ') || '建议';
+        return `<article class="list-item">
+        <h4>#${Number(r.id || 0)} 路 ${tags}</h4>
+        <p>${escHtml(String(r.content ?? ''))}</p>
         <div class="meta">
           <span>置信度: ${fmtNum(r.confidence)}</span>
-          <span>${r.suggested_at || r.created_at}</span>
-          <span>${r.ingest_source}</span>
-          <span>状态: ${r.status || 'new'}</span>
+          <span>${escHtml(textOr(r.suggested_at || r.created_at))}</span>
+          <span>${escHtml(textOr(r.ingest_source))}</span>
+          <span>状态: ${escHtml(textOr(r.status, 'new'))}</span>
         </div>
         <div class="meta actions">
-          <button class="btn ghost tiny" data-feedback-quick="${r.id}" data-outcome="profit" data-status="reviewed" data-score="85">标记盈利</button>
-          <button class="btn ghost tiny" data-feedback-quick="${r.id}" data-outcome="loss" data-status="reviewed" data-score="40">标记亏损</button>
-          <button class="btn ghost tiny" data-feedback-quick="${r.id}" data-outcome="pending" data-status="new" data-score="70">继续观察</button>
+          <button class="btn ghost tiny" data-feedback-quick="${Number(r.id || 0)}" data-outcome="profit" data-status="reviewed" data-score="85">标记盈利</button>
+          <button class="btn ghost tiny" data-feedback-quick="${Number(r.id || 0)}" data-outcome="loss" data-status="reviewed" data-score="40">标记亏损</button>
+          <button class="btn ghost tiny" data-feedback-quick="${Number(r.id || 0)}" data-outcome="pending" data-status="new" data-score="70">继续观察</button>
         </div>
-      </article>`
+      </article>`;
+      }
     )
     .join('');
 
@@ -519,27 +554,35 @@ function renderJobs(rows, meta = {}) {
 
   node.innerHTML = rows
     .map(
-      (j) => `<article class="list-item">
-        <h4>${j.name}</h4>
-        <p>${j.description || '无描述'}</p>
+      (j) => {
+        const jobId = textOr(j.job_id, '');
+        return `<article class="list-item">
+        <h4>${escHtml(textOr(j.name))}</h4>
+        <p>${escHtml(textOr(j.description, '无描述'))}</p>
         <div class="meta">
-          <span>job_id: ${j.job_id}</span>
-          <span>${String(j.job_id || '').startsWith('local-') ? '本地队列任务' : '远程任务'}</span>
+          <span>job_id: ${escHtml(textOr(jobId))}</span>
+          <span>${jobId.startsWith('local-') ? '本地队列任务' : '远程任务'}</span>
           <span>${toBool(j.enabled) ? '启用中' : '已禁用'}</span>
-          <span>下次: ${j.next_run_at || '-'}</span>
+          <span>下次: ${escHtml(textOr(j.next_run_at))}</span>
         </div>
         <div class="meta">
-          <button class="btn ghost" data-run-job="${j.job_id}">立即执行</button>
-          <button class="btn" data-toggle-job="${j.job_id}" data-enabled="${toBool(j.enabled) ? 1 : 0}">${toBool(j.enabled) ? '禁用' : '启用'}</button>
+          <button class="btn ghost" data-run-job="${escHtml(jobId)}">立即执行</button>
+          <button class="btn" data-toggle-job="${escHtml(jobId)}" data-enabled="${toBool(j.enabled) ? 1 : 0}">${toBool(j.enabled) ? '禁用' : '启用'}</button>
         </div>
-      </article>`
+      </article>`;
+      }
     )
     .join('');
 
   $$('[data-run-job]').forEach((btn) => {
     btn.addEventListener('click', async () => {
+      const jobId = String(btn.dataset.runJob || '').trim();
+      if (!jobId) {
+        showToast('任务 ID 无效');
+        return;
+      }
       try {
-        const result = await api(`/api/openclaw/cron/jobs/${btn.dataset.runJob}/run`, { method: 'POST' });
+        const result = await api(`/api/openclaw/cron/jobs/${encodeURIComponent(jobId)}/run`, { method: 'POST' });
         if (result.queued) {
           showToast(`网关不可写，执行请求已入队(${result.queue_id})`);
         } else {
@@ -555,8 +598,13 @@ function renderJobs(rows, meta = {}) {
   $$('[data-toggle-job]').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const enabled = btn.dataset.enabled === '1';
+      const jobId = String(btn.dataset.toggleJob || '').trim();
+      if (!jobId) {
+        showToast('任务 ID 无效');
+        return;
+      }
       try {
-        const result = await api(`/api/openclaw/cron/jobs/${btn.dataset.toggleJob}`, {
+        const result = await api(`/api/openclaw/cron/jobs/${encodeURIComponent(jobId)}`, {
           method: 'PATCH',
           body: JSON.stringify({ enabled: !enabled }),
         });
@@ -584,11 +632,11 @@ function renderSectors(rows) {
     .map((s) => {
       const strongStocks = s.strong_stocks || [];
       return `<article class="list-item">
-        <h4>${s.sector_name}</h4>
-        <p>强度 ${fmtNum(s.strength_score)} · 涨跌 ${fmtPct(s.change_pct)} · 龙头 ${s.leading_symbol || '-'}</p>
-        <div class="meta"><span>${s.sample_time || '-'}</span></div>
+        <h4>${escHtml(textOr(s.sector_name))}</h4>
+        <p>强度 ${fmtNum(s.strength_score)} · 涨跌 ${fmtPct(s.change_pct)} · 龙头 ${escHtml(textOr(s.leading_symbol))}</p>
+        <div class="meta"><span>${escHtml(textOr(s.sample_time))}</span></div>
         ${strongStocks.length
-          ? `<div class="meta"><span>强势股: ${strongStocks.slice(0, 4).map((x) => `${x.symbol}(${fmtPct(x.change_pct)})`).join(' / ')}</span></div>`
+          ? `<div class="meta"><span>强势股: ${strongStocks.slice(0, 4).map((x) => `${escHtml(textOr(x.symbol))}(${fmtPct(x.change_pct)})`).join(' / ')}</span></div>`
           : ''}
       </article>`;
     })
@@ -606,11 +654,14 @@ function renderNews(rows) {
 
   node.innerHTML = rows
     .map(
-      (n) => `<article class="list-item">
-        <h4>${n.title}</h4>
-        <p>${n.summary || ''}</p>
-        <div class="meta"><span>${n.source}</span><span>${n.published_at || '-'}</span>${n.url ? `<a href="${n.url}" target="_blank" rel="noreferrer">打开</a>` : ''}</div>
-      </article>`
+      (n) => {
+        const url = safeHttpUrl(n.url);
+        return `<article class="list-item">
+        <h4>${escHtml(textOr(n.title))}</h4>
+        <p>${escHtml(String(n.summary ?? ''))}</p>
+        <div class="meta"><span>${escHtml(textOr(n.source))}</span><span>${escHtml(textOr(n.published_at))}</span>${url ? `<a href="${escHtml(url)}" target="_blank" rel="noreferrer">打开</a>` : ''}</div>
+      </article>`;
+      }
     )
     .join('');
 }
@@ -627,9 +678,9 @@ function renderAlerts(rows) {
   node.innerHTML = rows
     .map(
       (a) => `<article class="list-item">
-        <h4>${a.title}</h4>
-        <p>${a.message}</p>
-        <div class="meta"><span>${a.alert_type}</span><span>${a.severity}</span><span>${a.triggered_at}</span></div>
+        <h4>${escHtml(textOr(a.title))}</h4>
+        <p>${escHtml(String(a.message ?? ''))}</p>
+        <div class="meta"><span>${escHtml(textOr(a.alert_type))}</span><span>${escHtml(textOr(a.severity))}</span><span>${escHtml(textOr(a.triggered_at))}</span></div>
       </article>`
     )
     .join('');
@@ -647,7 +698,7 @@ function renderFeedbackMetrics(metrics = {}) {
   ];
 
   node.innerHTML = cards
-    .map(([label, value]) => `<article class="kpi-card mini"><p>${label}</p><strong>${value}</strong></article>`)
+    .map(([label, value]) => `<article class="kpi-card mini"><p>${escHtml(label)}</p><strong>${escHtml(String(value ?? '-'))}</strong></article>`)
     .join('');
 }
 
@@ -666,14 +717,14 @@ function renderCandidates(payload = {}) {
   const watchHtml = watchlist.length
     ? watchlist
         .slice(0, 12)
-        .map((w) => `<article class="list-item"><h4>${w.symbol} ${w.name || ''}</h4><p>${w.thesis || '无投资观点'}</p><div class="meta"><span>优先级: ${w.priority}</span><span>${w.market}</span></div></article>`)
+        .map((w) => `<article class="list-item"><h4>${escHtml(textOr(w.symbol))} ${escHtml(textOr(w.name, ''))}</h4><p>${escHtml(textOr(w.thesis, '无投资观点'))}</p><div class="meta"><span>优先级: ${fmtNum(w.priority)}</span><span>${escHtml(textOr(w.market))}</span></div></article>`)
         .join('')
     : '<p class="muted">暂无 active watchlist</p>';
 
   const leadersHtml = leaders.length
     ? leaders
         .slice(0, 12)
-        .map((s) => `<article class="list-item"><h4>${s.leading_symbol || '-'} 路 ${s.sector_name}</h4><p>强度 ${fmtNum(s.strength_score)} / 涨跌 ${fmtPct(s.change_pct)}</p><div class="meta"><span>${s.sample_time || '-'}</span></div></article>`)
+        .map((s) => `<article class="list-item"><h4>${escHtml(textOr(s.leading_symbol))} 路 ${escHtml(textOr(s.sector_name))}</h4><p>强度 ${fmtNum(s.strength_score)} / 涨跌 ${fmtPct(s.change_pct)}</p><div class="meta"><span>${escHtml(textOr(s.sample_time))}</span></div></article>`)
         .join('')
     : '<p class="muted">暂无板块龙头</p>';
 
@@ -700,11 +751,11 @@ function renderTemplates(rows) {
   node.innerHTML = rows
     .map(
       (t) => `<article class="list-item">
-        <h4>${t.name}</h4>
-        <p>${t.period} 路 ${t.cron_expression} 路 ${t.timezone}</p>
+        <h4>${escHtml(textOr(t.name))}</h4>
+        <p>${escHtml(textOr(t.period))} 路 ${escHtml(textOr(t.cron_expression))} 路 ${escHtml(textOr(t.timezone))}</p>
         <div class="meta">
           <span>${toBool(t.enabled) ? '启用' : '禁用'}</span>
-          <button class="btn ghost" data-run-template="${t.id}">一键创建任务</button>
+          <button class="btn ghost" data-run-template="${Number(t.id || 0)}">一键创建任务</button>
         </div>
       </article>`
     )
@@ -736,7 +787,7 @@ function syncTemplateInstantiateSelect() {
   const options = state.templates || [];
   const html = [
     '<option value="">请先选择模板</option>',
-    ...options.map((tpl) => `<option value="${tpl.id}">#${tpl.id} ${tpl.name} (${tpl.period})</option>`),
+    ...options.map((tpl) => `<option value="${Number(tpl.id || 0)}">#${Number(tpl.id || 0)} ${escHtml(textOr(tpl.name))} (${escHtml(textOr(tpl.period))})</option>`),
   ].join('');
 
   select.innerHTML = html;
@@ -758,9 +809,9 @@ function renderAudit(rows) {
     .slice(0, 30)
     .map(
       (a) => `<article class="list-item">
-        <h4>${a.action}</h4>
-        <p>${a.entity_type || 'system'} ${a.entity_id ? `#${a.entity_id}` : ''}</p>
-        <div class="meta"><span>${a.created_at}</span></div>
+        <h4>${escHtml(textOr(a.action))}</h4>
+        <p>${escHtml(textOr(a.entity_type, 'system'))} ${a.entity_id ? `#${escHtml(String(a.entity_id))}` : ''}</p>
+        <div class="meta"><span>${escHtml(textOr(a.created_at))}</span></div>
       </article>`
     )
     .join('');
@@ -779,9 +830,9 @@ function renderQuality(rows) {
     .slice(0, 30)
     .map(
       (q) => `<article class="list-item">
-        <h4>${q.job_name || q.source_name || 'collector'} 路 ${q.status}</h4>
-        <p>${q.message || ''}</p>
-        <div class="meta"><span>重试:${fmtNum(q.retry_count)}</span><span>${q.logged_at || q.created_at || '-'}</span></div>
+        <h4>${escHtml(textOr(q.job_name || q.source_name, 'collector'))} 路 ${escHtml(textOr(q.status))}</h4>
+        <p>${escHtml(String(q.message ?? ''))}</p>
+        <div class="meta"><span>重试:${fmtNum(q.retry_count)}</span><span>${escHtml(textOr(q.logged_at || q.created_at))}</span></div>
       </article>`
     )
     .join('');
@@ -1004,6 +1055,11 @@ function wireForms() {
     e.preventDefault();
     e.stopPropagation();
     openExternalPage('/opportunities.html');
+  });
+  $('#openDailyReviewPageBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openExternalPage('/daily-review.html');
   });
   $('#openHealthPageBtn')?.addEventListener('click', (e) => {
     e.preventDefault();
@@ -1260,7 +1316,7 @@ wireTabs();
 wireForms();
 initAuth();
 setInterval(() => {
-  if (state.me) {
+  if (state.me && !state.pollTimer) {
     loadAll().catch(() => {});
   }
 }, 60000);

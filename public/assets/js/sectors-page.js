@@ -77,6 +77,20 @@ function fmtPct(v) {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
 
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function textOr(value, fallback = '-') {
+  const text = String(value ?? '').trim();
+  return text === '' ? fallback : text;
+}
+
 function trendLabel(trend) {
   const v = (trend || '').toString().toLowerCase();
   if (v === 'strong_up') return '强势上行';
@@ -161,24 +175,24 @@ function renderKpi(payload) {
   ];
 
   $('#sectorKpi').innerHTML = cards
-    .map(([k, v]) => `<article class="focus-kpi"><p>${k}</p><strong>${v}</strong></article>`)
+    .map(([k, v]) => `<article class="focus-kpi"><p>${escHtml(k)}</p><strong>${escHtml(v)}</strong></article>`)
     .join('');
 }
 
 function stockCardHtml(stock, sourceTag) {
   const score = Number(stock.hot_score || 0);
-  const source = sourceTag ? `<span class="score-badge ${scoreClass(score)}">${sourceTag}</span>` : '';
+  const source = sourceTag ? `<span class="score-badge ${scoreClass(score)}">${escHtml(sourceTag)}</span>` : '';
   return `<article class="focus-card">
-    <h4>${stock.symbol} ${stock.name || ''}</h4>
-    <p>${source} <span class="notice">${stock.sector_name || '-'}</span></p>
-    <p>价格 ${fmtNum(stock.price)} · 涨跌 ${fmtPct(stock.change_pct)} · ${trendLabel(stock.trend_direction)}</p>
-    <p>评分 ${fmtNum(score, 1)} · ${stock.action_advice || '-'}</p>
+    <h4>${escHtml(textOr(stock.symbol, '-'))} ${escHtml(textOr(stock.name, ''))}</h4>
+    <p>${source} <span class="notice">${escHtml(textOr(stock.sector_name, '-'))}</span></p>
+    <p>价格 ${fmtNum(stock.price)} · 涨跌 ${fmtPct(stock.change_pct)} · ${escHtml(trendLabel(stock.trend_direction))}</p>
+    <p>评分 ${fmtNum(score, 1)} · ${escHtml(textOr(stock.action_advice, '-'))}</p>
     <div class="focus-meta">
       <span>量 ${fmtNum(stock.volume, 0)}</span>
-      <span>${stock.quote_time || '-'}</span>
+      <span>${escHtml(textOr(stock.quote_time, '-'))}</span>
     </div>
     <div style="margin-top:8px;">
-      <button class="btn ghost tiny" data-add-watch-symbol="${stock.symbol}" data-add-watch-name="${stock.name || ''}" data-add-watch-market="${stock.market || 'A_STOCK_MAIN'}" data-add-watch-sector="${stock.sector_name || ''}">加入持续关注池</button>
+      <button class="btn ghost tiny" data-add-watch-symbol="${escHtml(textOr(stock.symbol, ''))}" data-add-watch-name="${escHtml(textOr(stock.name, ''))}" data-add-watch-market="${escHtml(textOr(stock.market, 'A_STOCK_MAIN'))}" data-add-watch-sector="${escHtml(textOr(stock.sector_name, ''))}">加入持续关注池</button>
     </div>
   </article>`;
 }
@@ -225,12 +239,12 @@ function renderSectors(payload) {
     .map((sector) => {
       const stocks = sector.strong_stocks || [];
       return `<article class="focus-card">
-        <h4>${sector.sector_name || '-'}</h4>
-        <p>强度 ${fmtNum(sector.strength_score)} · 涨跌 ${fmtPct(sector.change_pct)} · 龙头 ${sector.leading_symbol || '-'}</p>
+        <h4>${escHtml(textOr(sector.sector_name, '-'))}</h4>
+        <p>强度 ${fmtNum(sector.strength_score)} · 涨跌 ${fmtPct(sector.change_pct)} · 龙头 ${escHtml(textOr(sector.leading_symbol, '-'))}</p>
         <div class="focus-meta">
           <span>活跃数 ${fmtNum(sector.active_count, 0)}</span>
-          <span>${sector.sample_time || '-'}</span>
-          <span>${sector.source || '-'}</span>
+          <span>${escHtml(textOr(sector.sample_time, '-'))}</span>
+          <span>${escHtml(textOr(sector.source, '-'))}</span>
         </div>
         <div class="focus-list compact" style="margin-top:10px;">
           ${stocks.length
@@ -277,18 +291,20 @@ function renderThemes(payload) {
   node.innerHTML = rows
     .map((theme) => {
       const stocks = theme.strong_stocks || [];
+      const keywords = Array.isArray(theme.keywords_list) ? theme.keywords_list.map((x) => textOr(x, '-')).join(' / ') : '';
+      const matchedSectors = Array.isArray(theme.matched_sectors) ? theme.matched_sectors.map((x) => textOr(x, '-')).join(' / ') : '';
       return `<article class="focus-card">
-        <h4>${theme.theme_name}</h4>
-        <p>关键词: ${(theme.keywords_list || []).join(' / ') || '-'}</p>
-        <p>状态: ${theme.status || '-'} · 优先级 ${fmtNum(theme.priority, 0)} · 命中 ${fmtNum(theme.hot_count, 0)}</p>
-        ${theme.note ? `<p>${theme.note}</p>` : ''}
+        <h4>${escHtml(textOr(theme.theme_name, '-'))}</h4>
+        <p>关键词: ${escHtml(keywords || '-')}</p>
+        <p>状态: ${escHtml(textOr(theme.status, '-'))} · 优先级 ${fmtNum(theme.priority, 0)} · 命中 ${fmtNum(theme.hot_count, 0)}</p>
+        ${theme.note ? `<p>${escHtml(theme.note)}</p>` : ''}
         <div class="focus-meta">
-          <span>${theme.updated_at || theme.created_at || '-'}</span>
-          ${(theme.matched_sectors || []).length ? `<span>匹配板块: ${(theme.matched_sectors || []).join(' / ')}</span>` : ''}
+          <span>${escHtml(textOr(theme.updated_at || theme.created_at, '-'))}</span>
+          ${matchedSectors ? `<span>匹配板块: ${escHtml(matchedSectors)}</span>` : ''}
         </div>
         <div class="focus-meta actions">
-          <button class="btn ghost tiny" data-theme-edit="${theme.id}">编辑</button>
-          <button class="btn tiny" data-theme-del="${theme.id}">删除</button>
+          <button class="btn ghost tiny" data-theme-edit="${Number(theme.id || 0)}">编辑</button>
+          <button class="btn tiny" data-theme-del="${Number(theme.id || 0)}">删除</button>
         </div>
         <div class="focus-list compact" style="margin-top:8px;">
           ${stocks.length
@@ -341,16 +357,16 @@ function renderTopStocks(payload) {
   node.innerHTML = rows.map((stock, idx) => {
     const source = (stock.sources || []).slice(0, 3).join(' | ');
     return `<article class="focus-card">
-      <h4>#${idx + 1} ${stock.symbol} ${stock.name || ''}</h4>
-      <p>${source || '-'} · ${stock.sector_name || '-'}</p>
-      <p>价格 ${fmtNum(stock.price)} · 涨跌 ${fmtPct(stock.change_pct)} · ${trendLabel(stock.trend_direction)}</p>
-      <p>评分 ${fmtNum(stock.hot_score, 1)} · ${stock.action_advice || '-'}</p>
+      <h4>#${idx + 1} ${escHtml(textOr(stock.symbol, '-'))} ${escHtml(textOr(stock.name, ''))}</h4>
+      <p>${escHtml(source || '-')} · ${escHtml(textOr(stock.sector_name, '-'))}</p>
+      <p>价格 ${fmtNum(stock.price)} · 涨跌 ${fmtPct(stock.change_pct)} · ${escHtml(trendLabel(stock.trend_direction))}</p>
+      <p>评分 ${fmtNum(stock.hot_score, 1)} · ${escHtml(textOr(stock.action_advice, '-'))}</p>
       <div class="focus-meta">
         <span>量 ${fmtNum(stock.volume, 0)}</span>
-        <span>${stock.quote_time || '-'}</span>
+        <span>${escHtml(textOr(stock.quote_time, '-'))}</span>
       </div>
       <div style="margin-top:8px;">
-        <button class="btn ghost tiny" data-add-watch-symbol="${stock.symbol}" data-add-watch-name="${stock.name || ''}" data-add-watch-market="${stock.market || 'A_STOCK_MAIN'}" data-add-watch-sector="${stock.sector_name || ''}">加入持续关注池</button>
+        <button class="btn ghost tiny" data-add-watch-symbol="${escHtml(textOr(stock.symbol, ''))}" data-add-watch-name="${escHtml(textOr(stock.name, ''))}" data-add-watch-market="${escHtml(textOr(stock.market, 'A_STOCK_MAIN'))}" data-add-watch-sector="${escHtml(textOr(stock.sector_name, ''))}">加入持续关注池</button>
       </div>
     </article>`;
   }).join('');

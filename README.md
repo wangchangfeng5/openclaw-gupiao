@@ -73,6 +73,7 @@ powershell -ExecutionPolicy Bypass -File scripts/windows/start-manual-panel.ps1
 
 - `http://127.0.0.1:8080`
 - `http://127.0.0.1:8080/sectors.html`（板块雷达：热门板块 + 强势股 + 自定义题材）
+- `http://127.0.0.1:8080/daily-review.html`（每日复盘中心：自动复盘 + 手工复盘）
 - 默认登录账号密码：以 `.env` 的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 为准。
 
 说明：
@@ -102,6 +103,10 @@ powershell -ExecutionPolicy Bypass -File scripts/windows/promote-dev-to-main.ps1
 
 - `POST /api/auth/login`
 - `GET /api/dashboard/overview`
+- `GET /api/reviews/daily`
+- `GET /api/reviews/daily/latest`
+- `POST /api/reviews/daily/generate`
+- `PUT /api/reviews/daily/{id}`
 - `GET/POST/PUT /api/positions`
 - `GET /api/positions/{id}/notes`
 - `POST /api/positions/{id}/notes`
@@ -140,6 +145,9 @@ powershell -ExecutionPolicy Bypass -File scripts/windows/promote-dev-to-main.ps1
   - 工作日中午窗口：12:08-12:20（slot=`midday`）
   - 工作日收盘窗口：15:08-15:25（slot=`close`）
   - 自动写入 `watchlist_review_snapshots`（全局 + 个股）
+- 每日收盘复盘自动执行：
+  - 工作日收盘窗口：15:08-15:25
+  - 自动写入 `daily_operation_reviews`（按用户、按日期）
 
 可选自动任务：
 
@@ -151,6 +159,28 @@ powershell -ExecutionPolicy Bypass -File scripts/windows/setup-schtasks.ps1
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/windows/run-review-snapshot.ps1 -Slot manual
+```
+
+手动执行「热门持仓 + 午盘机会」一键刷新（推荐）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows/run-hot-midday.ps1
+```
+
+可选参数示例：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows/run-hot-midday.ps1 -User owner01 -Limit 30 -HotLimit 12 -Json
+```
+
+执行后会写入快照文件：
+
+- `storage/runtime/hot_midday_snapshot.json`
+
+手动执行「每日收盘复盘」：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/windows/run-daily-review.ps1 -Slot manual
 ```
 
 ## 测试

@@ -218,6 +218,25 @@ final class InternalIngestController extends BaseController
                 :symbol, :market, :name, :sector_name, :trend_direction, :price, :change_pct, :volume, :turnover, :quote_time, :source, :raw_json, NOW()
             )'
         );
+        $latestStmt = Database::connection()->prepare(
+            'INSERT INTO market_quotes_latest (
+                symbol, market, name, sector_name, trend_direction, price, change_pct, volume, turnover, quote_time, source, raw_json, created_at, updated_at
+            ) VALUES (
+                :symbol, :market, :name, :sector_name, :trend_direction, :price, :change_pct, :volume, :turnover, :quote_time, :source, :raw_json, NOW(), NOW()
+            )
+            ON DUPLICATE KEY UPDATE
+                name = IF(VALUES(quote_time) >= quote_time, VALUES(name), name),
+                sector_name = IF(VALUES(quote_time) >= quote_time, VALUES(sector_name), sector_name),
+                trend_direction = IF(VALUES(quote_time) >= quote_time, VALUES(trend_direction), trend_direction),
+                price = IF(VALUES(quote_time) >= quote_time, VALUES(price), price),
+                change_pct = IF(VALUES(quote_time) >= quote_time, VALUES(change_pct), change_pct),
+                volume = IF(VALUES(quote_time) >= quote_time, VALUES(volume), volume),
+                turnover = IF(VALUES(quote_time) >= quote_time, VALUES(turnover), turnover),
+                quote_time = GREATEST(quote_time, VALUES(quote_time)),
+                source = IF(VALUES(quote_time) >= quote_time, VALUES(source), source),
+                raw_json = IF(VALUES(quote_time) >= quote_time, VALUES(raw_json), raw_json),
+                updated_at = NOW()'
+        );
 
         $added = 0;
         foreach ($items as $item) {
@@ -231,6 +250,20 @@ final class InternalIngestController extends BaseController
             }
 
             $stmt->execute([
+                'symbol' => $symbol,
+                'market' => (string) ($item['market'] ?? 'A_STOCK_MAIN'),
+                'name' => trim((string) ($item['name'] ?? '')),
+                'sector_name' => trim((string) ($item['sector_name'] ?? '')),
+                'trend_direction' => trim((string) ($item['trend_direction'] ?? '')),
+                'price' => $item['price'] ?? null,
+                'change_pct' => $item['change_pct'] ?? null,
+                'volume' => $item['volume'] ?? null,
+                'turnover' => $item['turnover'] ?? null,
+                'quote_time' => (string) ($item['quote_time'] ?? now_sql()),
+                'source' => (string) ($item['source'] ?? 'market_collector'),
+                'raw_json' => json_encode($item, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+            $latestStmt->execute([
                 'symbol' => $symbol,
                 'market' => (string) ($item['market'] ?? 'A_STOCK_MAIN'),
                 'name' => trim((string) ($item['name'] ?? '')),

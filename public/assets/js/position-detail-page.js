@@ -77,6 +77,20 @@ function fmtPct(v) {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
 
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function textOr(value, fallback = '-') {
+  const text = String(value ?? '').trim();
+  return text === '' ? fallback : text;
+}
+
 function trendLabel(trend) {
   const v = (trend || '').toString().toLowerCase();
   if (v === 'strong_up') return '强势上行';
@@ -111,7 +125,7 @@ function scoreClass(score) {
 
 function scoreBadge(score, grade, tag) {
   if (score === null || score === undefined) return '<span class="notice">-</span>';
-  return `<span class="score-badge ${scoreClass(score)}">${fmtNum(score, 0)} · ${grade || '-'}</span><span class="notice">${tag || '-'}</span>`;
+  return `<span class="score-badge ${scoreClass(score)}">${fmtNum(score, 0)} · ${escHtml(textOr(grade, '-'))}</span><span class="notice">${escHtml(textOr(tag, '-'))}</span>`;
 }
 
 function riskFlagsText(flags) {
@@ -141,7 +155,7 @@ function renderKpi(overview, sectorContext, quotes) {
   ];
 
   $('#detailKpi').innerHTML = cards
-    .map(([k, v]) => `<article class="focus-kpi"><p>${k}</p><strong>${v}</strong></article>`)
+    .map(([k, v]) => `<article class="focus-kpi"><p>${escHtml(k)}</p><strong>${escHtml(v)}</strong></article>`)
     .join('');
 }
 
@@ -249,7 +263,7 @@ function renderMetrics(overview) {
   ];
 
   $('#metricsGrid').innerHTML = metrics
-    .map(([k, v]) => `<article class="detail-metric"><p>${k}</p><strong>${v}</strong></article>`)
+    .map(([k, v]) => `<article class="detail-metric"><p>${escHtml(k)}</p><strong>${escHtml(v)}</strong></article>`)
     .join('');
 }
 
@@ -268,11 +282,11 @@ function renderQuoteTable(quotes) {
     <tbody>
       ${rows.map((r) => `
         <tr>
-          <td>${r.quote_time || '-'}</td>
+          <td>${escHtml(textOr(r.quote_time, '-'))}</td>
           <td>${fmtNum(r.price)}</td>
           <td>${fmtPct(r.change_pct)}</td>
           <td>${fmtNum(r.volume, 0)}</td>
-          <td>${r.source || '-'}</td>
+          <td>${escHtml(textOr(r.source, '-'))}</td>
         </tr>
       `).join('')}
     </tbody>
@@ -293,11 +307,11 @@ function renderTrades(trades) {
       ? '-'
       : `<span class="pill ${pnlClass}">${fmtNum(t.realized_pnl)}</span>`;
     return `<article class="focus-card">
-      <h4>${tradeLabel(t.trade_type)} · 数量 ${fmtNum(t.quantity, 4)} · 价格 ${fmtNum(t.price, 4)}</h4>
-      <p>成交额 ${fmtNum(t.amount)} · 手续费 ${fmtNum(t.fee)} · 时间 ${t.traded_at || '-'}</p>
+      <h4>${escHtml(tradeLabel(t.trade_type))} · 数量 ${fmtNum(t.quantity, 4)} · 价格 ${fmtNum(t.price, 4)}</h4>
+      <p>成交额 ${fmtNum(t.amount)} · 手续费 ${fmtNum(t.fee)} · 时间 ${escHtml(textOr(t.traded_at, '-'))}</p>
       <div class="focus-meta">
         <span>实现盈亏 ${pnlText}</span>
-        ${t.note ? `<span>备注: ${t.note}</span>` : ''}
+        ${t.note ? `<span>备注: ${escHtml(t.note)}</span>` : ''}
       </div>
     </article>`;
   }).join('');
@@ -306,29 +320,29 @@ function renderTrades(trades) {
 function renderSector(sectorContext) {
   const sector = sectorContext?.sector || {};
   $('#sectorSummary').innerHTML = `
-    <h4 style="margin:0 0 8px;">${sector.name || '未匹配板块'}</h4>
-    <p>强度: ${fmtNum(sector.strength_score, 2)} · 涨跌: ${fmtPct(sector.change_pct)} · 样本时间: ${sector.sample_time || '-'}</p>
-    <p>领涨代码: ${sector.leading_symbol || '-'} · 活跃数: ${fmtNum(sector.active_count, 0)} · 来源: ${sector.source || '-'}</p>
+    <h4 style="margin:0 0 8px;">${escHtml(textOr(sector.name, '未匹配板块'))}</h4>
+    <p>强度: ${fmtNum(sector.strength_score, 2)} · 涨跌: ${fmtPct(sector.change_pct)} · 样本时间: ${escHtml(textOr(sector.sample_time, '-'))}</p>
+    <p>领涨代码: ${escHtml(textOr(sector.leading_symbol, '-'))} · 活跃数: ${fmtNum(sector.active_count, 0)} · 来源: ${escHtml(textOr(sector.source, '-'))}</p>
   `;
 
   const leaders = sectorContext?.leaders || [];
   $('#sectorLeaders').innerHTML = leaders.length
     ? leaders.map((x) => `<article class="focus-card">
-        <h4>${x.symbol} ${x.name || ''}</h4>
-        <p>价格 ${fmtNum(x.price)} · 涨跌 ${fmtPct(x.change_pct)} · ${trendLabel(x.trend_direction)}</p>
-        <div class="focus-meta"><span>${x.quote_time || '-'}</span></div>
+        <h4>${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}</h4>
+        <p>价格 ${fmtNum(x.price)} · 涨跌 ${fmtPct(x.change_pct)} · ${escHtml(trendLabel(x.trend_direction))}</p>
+        <div class="focus-meta"><span>${escHtml(textOr(x.quote_time, '-'))}</span></div>
       </article>`).join('')
     : '<p class="muted">暂无板块强势票</p>';
 
   const momentum = sectorContext?.momentum || [];
   $('#sectorMomentum').innerHTML = momentum.length
     ? momentum.map((x) => `<article class="focus-card">
-        <h4>${x.symbol} ${x.name || ''}</h4>
-        <p>${x.sector_name || '-'} · ${trendLabel(x.trend_direction)} · 涨跌 ${fmtPct(x.change_pct)}</p>
+        <h4>${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}</h4>
+        <p>${escHtml(textOr(x.sector_name, '-'))} · ${escHtml(trendLabel(x.trend_direction))} · 涨跌 ${fmtPct(x.change_pct)}</p>
         <div class="focus-meta">
           <span>价格 ${fmtNum(x.price)}</span>
           <span>量 ${fmtNum(x.volume, 0)}</span>
-          <span>${x.quote_time || '-'}</span>
+          <span>${escHtml(textOr(x.quote_time, '-'))}</span>
         </div>
       </article>`).join('')
     : '<p class="muted">暂无板块动量票</p>';
@@ -336,10 +350,10 @@ function renderSector(sectorContext) {
   const picks = sectorContext?.recommended || [];
   $('#sectorPicks').innerHTML = picks.length
     ? picks.map((x) => `<article class="focus-card">
-        <h4>${x.symbol} ${x.name || ''}</h4>
+        <h4>${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}</h4>
         <p>${scoreBadge(x.ranking_score, x.ranking_grade, x.ranking_tag)}</p>
-        <p>${trendLabel(x.trend_direction)} · ${zoneLabel(x.position_zone)} · 现价 ${fmtNum(x.current_price)}</p>
-        <p>${x.ranking_action || '-'}</p>
+        <p>${escHtml(trendLabel(x.trend_direction))} · ${escHtml(zoneLabel(x.position_zone))} · 现价 ${fmtNum(x.current_price)}</p>
+        <p>${escHtml(textOr(x.ranking_action, '-'))}</p>
       </article>`).join('')
     : '<p class="muted">暂无同板块推荐票</p>';
 }
@@ -350,16 +364,16 @@ function renderRelatedPositions(items) {
 
   node.innerHTML = items.length
     ? items.map((x) => `<article class="focus-card">
-        <h4>${x.symbol} ${x.name || ''}</h4>
-        <p>${x.sector_name || '-'} · ${trendLabel(x.trend_direction)} · ${x.status || '-'}</p>
+        <h4>${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}</h4>
+        <p>${escHtml(textOr(x.sector_name, '-'))} · ${escHtml(trendLabel(x.trend_direction))} · ${escHtml(textOr(x.status, '-'))}</p>
         <div class="focus-meta">
           <span>现价 ${fmtNum(x.current_price)}</span>
           <span>涨跌 ${fmtPct(x.change_pct)}</span>
           <span>盈亏 ${fmtPct(x.pnl_pct)}</span>
-          <span>${x.quote_time || '-'}</span>
+          <span>${escHtml(textOr(x.quote_time, '-'))}</span>
         </div>
         <div style="margin-top:8px;">
-          <button class="btn ghost tiny" data-open-position-id="${x.id}">查看持仓详情</button>
+          <button class="btn ghost tiny" data-open-position-id="${Number(x.id || 0)}">查看持仓详情</button>
         </div>
       </article>`).join('')
     : '<p class="muted">暂无可关联的持仓</p>';
@@ -377,11 +391,11 @@ function renderNews(items) {
   const node = $('#newsList');
   node.innerHTML = items.length
     ? items.map((x) => `<article class="focus-card">
-        <h4>${x.title || '-'}</h4>
-        <p>${x.summary || '-'}</p>
+        <h4>${escHtml(textOr(x.title, '-'))}</h4>
+        <p>${escHtml(textOr(x.summary, '-'))}</p>
         <div class="focus-meta">
-          <span>${x.published_at || '-'}</span>
-          <span>${x.source || '-'}</span>
+          <span>${escHtml(textOr(x.published_at, '-'))}</span>
+          <span>${escHtml(textOr(x.source, '-'))}</span>
           <span>相关度 ${fmtNum(x.relevance_score, 0)}</span>
         </div>
       </article>`).join('')
@@ -392,11 +406,11 @@ function renderSuggestions(items) {
   const node = $('#suggestionList');
   node.innerHTML = items.length
     ? items.map((x) => `<article class="focus-card">
-        <h4>建议 #${x.id} · 置信度 ${fmtNum(x.confidence, 0)}</h4>
-        <p>${(x.content || '-').toString().slice(0, 280)}</p>
+        <h4>建议 #${fmtNum(x.id, 0)} · 置信度 ${fmtNum(x.confidence, 0)}</h4>
+        <p>${escHtml((x.content || '-').toString().slice(0, 280))}</p>
         <div class="focus-meta">
-          <span>${x.suggested_at || '-'}</span>
-          <span>${x.status || '-'}</span>
+          <span>${escHtml(textOr(x.suggested_at, '-'))}</span>
+          <span>${escHtml(textOr(x.status, '-'))}</span>
         </div>
       </article>`).join('')
     : '<p class="muted">暂无该股票的 OpenClaw 建议</p>';

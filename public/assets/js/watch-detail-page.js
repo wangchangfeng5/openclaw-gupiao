@@ -74,6 +74,20 @@ function fmtPct(v) {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
 
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function textOr(value, fallback = '-') {
+  const text = String(value ?? '').trim();
+  return text === '' ? fallback : text;
+}
+
 function trendLabel(trend) {
   const v = (trend || '').toString().toLowerCase();
   if (v === 'strong_up') return '强势上行';
@@ -100,7 +114,7 @@ function scoreClass(score) {
 }
 
 function scoreBadge(score, grade, tag) {
-  return `<span class="score-badge ${scoreClass(score)}">${fmtNum(score, 0)} · ${grade || '-'}</span><span class="notice">${tag || '-'}</span>`;
+  return `<span class="score-badge ${scoreClass(score)}">${fmtNum(score, 0)} · ${escHtml(textOr(grade, '-'))}</span><span class="notice">${escHtml(textOr(tag, '-'))}</span>`;
 }
 
 function renderKpi(overview, quoteSeries, sectorContext, relatedNews) {
@@ -115,7 +129,7 @@ function renderKpi(overview, quoteSeries, sectorContext, relatedNews) {
   ];
 
   $('#detailKpi').innerHTML = cards
-    .map(([k, v]) => `<article class="focus-kpi"><p>${k}</p><strong>${v}</strong></article>`)
+    .map(([k, v], idx) => `<article class="focus-kpi"><p>${escHtml(k)}</p><strong>${idx === 0 ? v : escHtml(v)}</strong></article>`)
     .join('');
 }
 
@@ -230,7 +244,7 @@ function renderMetrics(overview) {
   ];
 
   $('#metricsGrid').innerHTML = metrics
-    .map(([k, v]) => `<article class="detail-metric"><p>${k}</p><strong>${v}</strong></article>`)
+    .map(([k, v]) => `<article class="detail-metric"><p>${escHtml(k)}</p><strong>${escHtml(v)}</strong></article>`)
     .join('');
 }
 
@@ -250,11 +264,11 @@ function renderQuoteTable(quotes) {
     <tbody>
       ${rows.map((r) => `
         <tr>
-          <td>${r.quote_time || '-'}</td>
+          <td>${escHtml(textOr(r.quote_time, '-'))}</td>
           <td>${fmtNum(r.price)}</td>
           <td>${fmtPct(r.change_pct)}</td>
           <td>${fmtNum(r.volume, 0)}</td>
-          <td>${r.source || '-'}</td>
+          <td>${escHtml(textOr(r.source, '-'))}</td>
         </tr>
       `).join('')}
     </tbody>
@@ -264,27 +278,27 @@ function renderQuoteTable(quotes) {
 function renderSector(sectorContext) {
   const sector = sectorContext?.sector || {};
   $('#sectorSummary').innerHTML = `
-    <h4 style="margin:0 0 8px;">${sector.name || '未匹配板块'}</h4>
-    <p>强度: ${fmtNum(sector.strength_score, 2)} · 涨跌: ${fmtPct(sector.change_pct)} · 样本时间: ${sector.sample_time || '-'}</p>
-    <p>龙头代码: ${sector.leading_symbol || '-'} · 样本数: ${fmtNum(sector.active_count, 0)} · 来源: ${sector.source || '-'}</p>
+    <h4 style="margin:0 0 8px;">${escHtml(textOr(sector.name, '未匹配板块'))}</h4>
+    <p>强度: ${fmtNum(sector.strength_score, 2)} · 涨跌: ${fmtPct(sector.change_pct)} · 样本时间: ${escHtml(textOr(sector.sample_time, '-'))}</p>
+    <p>龙头代码: ${escHtml(textOr(sector.leading_symbol, '-'))} · 样本数: ${fmtNum(sector.active_count, 0)} · 来源: ${escHtml(textOr(sector.source, '-'))}</p>
   `;
 
   const leaders = sectorContext?.leaders || [];
   $('#sectorLeaders').innerHTML = leaders.length
     ? leaders.map((x) => `<article class="focus-card">
-        <h4>${x.symbol} ${x.name || ''}</h4>
-        <p>价格 ${fmtNum(x.price)} · 涨跌 ${fmtPct(x.change_pct)} · ${trendLabel(x.trend_direction)}</p>
-        <div class="focus-meta"><span>${x.quote_time || '-'}</span></div>
+        <h4>${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}</h4>
+        <p>价格 ${fmtNum(x.price)} · 涨跌 ${fmtPct(x.change_pct)} · ${escHtml(trendLabel(x.trend_direction))}</p>
+        <div class="focus-meta"><span>${escHtml(textOr(x.quote_time, '-'))}</span></div>
       </article>`).join('')
     : '<p class="muted">暂无板块强势票数据</p>';
 
   const picks = sectorContext?.recommended || [];
   $('#sectorPicks').innerHTML = picks.length
     ? picks.map((x) => `<article class="focus-card">
-        <h4>${x.symbol} ${x.name || ''}</h4>
+        <h4>${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}</h4>
         <p>${scoreBadge(x.ranking_score, x.ranking_grade, x.ranking_tag)}</p>
-        <p>${trendLabel(x.trend_direction)} · ${zoneLabel(x.position_zone)} · 现价 ${fmtNum(x.current_price)}</p>
-        <p>${x.ranking_action || '-'}</p>
+        <p>${escHtml(trendLabel(x.trend_direction))} · ${escHtml(zoneLabel(x.position_zone))} · 现价 ${fmtNum(x.current_price)}</p>
+        <p>${escHtml(textOr(x.ranking_action, '-'))}</p>
       </article>`).join('')
     : '<p class="muted">暂无同板块推荐票</p>';
 }
@@ -293,11 +307,11 @@ function renderNews(items) {
   const node = $('#newsList');
   node.innerHTML = items.length
     ? items.map((x) => `<article class="focus-card">
-        <h4>${x.title || '-'}</h4>
-        <p>${x.summary || '-'}</p>
+        <h4>${escHtml(textOr(x.title, '-'))}</h4>
+        <p>${escHtml(textOr(x.summary, '-'))}</p>
         <div class="focus-meta">
-          <span>${x.published_at || '-'}</span>
-          <span>${x.source || '-'}</span>
+          <span>${escHtml(textOr(x.published_at, '-'))}</span>
+          <span>${escHtml(textOr(x.source, '-'))}</span>
           <span>相关度 ${fmtNum(x.relevance_score, 0)}</span>
         </div>
       </article>`).join('')
@@ -308,11 +322,11 @@ function renderSuggestions(items) {
   const node = $('#suggestionList');
   node.innerHTML = items.length
     ? items.map((x) => `<article class="focus-card">
-        <h4>建议 #${x.id} · 置信度 ${fmtNum(x.confidence, 0)}</h4>
-        <p>${(x.content || '-').toString().slice(0, 280)}</p>
+        <h4>建议 #${fmtNum(x.id, 0)} · 置信度 ${fmtNum(x.confidence, 0)}</h4>
+        <p>${escHtml((x.content || '-').toString().slice(0, 280))}</p>
         <div class="focus-meta">
-          <span>${x.suggested_at || '-'}</span>
-          <span>${x.status || '-'}</span>
+          <span>${escHtml(textOr(x.suggested_at, '-'))}</span>
+          <span>${escHtml(textOr(x.status, '-'))}</span>
         </div>
       </article>`).join('')
     : '<p class="muted">暂无该股票的 OpenClaw 建议</p>';

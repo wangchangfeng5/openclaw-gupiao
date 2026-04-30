@@ -30,6 +30,60 @@ final class MarketController extends BaseController
         $this->ok(['sectors' => $stmt->fetchAll() ?: []]);
     }
 
+    public function hotTopSectors(): void
+    {
+        $limit = max(1, min(20, (int) $this->query('limit', 10)));
+        $pdo = Database::connection();
+
+        $latestSampleTime = (string) ($pdo->query('SELECT MAX(sample_time) FROM sector_strength')->fetchColumn() ?: '');
+        if ($latestSampleTime === '') {
+            $this->ok([
+                'top' => [],
+                'sample_time' => null,
+                'generated_at' => now_sql(),
+            ]);
+            return;
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT sector_name, strength_score, change_pct, leading_symbol, active_count, sample_time, source
+             FROM sector_strength
+             WHERE sample_time = :sample_time
+             ORDER BY strength_score DESC, change_pct DESC, active_count DESC, sector_name ASC
+             LIMIT :limit'
+        );
+        $stmt->bindValue(':sample_time', $latestSampleTime);
+        $stmt->bindValue(':limit', $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = $stmt->fetchAll() ?: [];
+        $leadersSnapshot = $this->loadMainboardLeadersSnapshot(6000, 12, 3);
+        $ranked = [];
+        foreach ($rows as $idx => $row) {
+            $sectorName = trim((string) ($row['sector_name'] ?? ''));
+            $sectorLeaders = $this->resolveSectorLeaders(
+                $sectorName,
+                $leadersSnapshot['by_sector'] ?? [],
+                3,
+                (string) ($row['leading_symbol'] ?? ''),
+                $leadersSnapshot['by_symbol'] ?? [],
+                $leadersSnapshot['global'] ?? []
+            );
+            $ranked[] = array_merge($row, [
+                'rank' => $idx + 1,
+                'sector_mainboard_leaders' => $sectorLeaders,
+            ]);
+        }
+
+        $this->ok([
+            'top' => $ranked,
+            'sample_time' => $latestSampleTime,
+            'leaders_trade_date' => $leadersSnapshot['trade_date'],
+            'mainboard_leaders' => $leadersSnapshot['global'],
+            'generated_at' => now_sql(),
+        ]);
+    }
+
     public function watchlistCandidates(): void
     {
         $pdo = Database::connection();
@@ -138,16 +192,10 @@ final class MarketController extends BaseController
                 SUM(CASE WHEN x.change_pct <= -7 THEN 1 ELSE 0 END) AS extreme_down_count,
                 MAX(x.quote_time) AS asof_time
              FROM (
-                SELECT mq.symbol, mq.change_pct, mq.quote_time
-                FROM market_quotes mq
-                INNER JOIN (
-                    SELECT symbol, market, MAX(id) AS max_id
-                    FROM market_quotes
-                    WHERE market = 'A_STOCK_MAIN'
-                    GROUP BY symbol, market
-                ) latest ON latest.max_id = mq.id
-                WHERE mq.market = 'A_STOCK_MAIN'
-                  AND mq.symbol REGEXP '^(000|001|002|003|600|601|603|605)[0-9]{3}$'
+                SELECT symbol, change_pct, quote_time
+                FROM market_quotes_latest
+                WHERE market = 'A_STOCK_MAIN'
+                  AND symbol REGEXP '^(000|001|002|003|600|601|603|605)[0-9]{3}$'
              ) x"
         )->fetch() ?: [];
 
@@ -411,6 +459,162 @@ final class MarketController extends BaseController
             return null;
         }
         return (float) $value;
+    }
+
+    /**
+     * @return array{
+     *   trade_date:?string,
+     *   global:array<int, array<string, mixed>>,
+     *   by_sector:array<string, array<int, array<string, mixed>>>,
+     *   by_symbol:array<string, array<string, mixed>>
+     * }
+     */
+    private function loadMainboardLeadersSnapshot(int $scanLimit = 1200, int $globalLimit = 12, int $sectorLimit = 3): array
+    {
+        $pdo = Database::connection();
+        $tradeDate = (string) ($pdo->query("SELECT MAX(trade_date) FROM market_close_rankings WHERE rank_type = 'strong'")->fetchColumn() ?: '');
+        if ($tradeDate === '') {
+            return [
+                'trade_date' => null,
+                'global' => [],
+                'by_sector' => [],
+                'by_symbol' => [],
+            ];
+        }
+
+        $stmt = $pdo->prepare(
+            "SELECT
+                r.symbol,
+                r.market,
+                r.name,
+                COALESCE(NULLIF(TRIM(r.sector_name), ''), q.sector_name, '') AS sector_name,
+                r.rank_no,
+                r.change_1d_pct,
+                r.change_3d_pct,
+                r.change_5d_pct,
+                r.snapshot_time
+             FROM market_close_rankings r
+             LEFT JOIN market_quotes_latest q
+                ON q.symbol = r.symbol AND q.market = 'A_STOCK_MAIN'
+             WHERE r.rank_type = 'strong'
+               AND r.trade_date = :trade_date
+               AND r.symbol REGEXP '^(000|001|002|003|600|601|603|605)[0-9]{3}$'
+             ORDER BY COALESCE(r.change_3d_pct, -999) DESC, COALESCE(r.change_1d_pct, -999) DESC, r.rank_no ASC
+             LIMIT :limit"
+        );
+        $stmt->bindValue(':trade_date', $tradeDate);
+        $stmt->bindValue(':limit', max(100, min(5000, $scanLimit)), \PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = $stmt->fetchAll() ?: [];
+
+        $mapped = array_map(
+            static fn(array $row): array => [
+                'symbol' => (string) ($row['symbol'] ?? ''),
+                'market' => (string) ($row['market'] ?? ''),
+                'name' => (string) ($row['name'] ?? ''),
+                'sector_name' => (string) ($row['sector_name'] ?? ''),
+                'rank_no' => $row['rank_no'] ?? null,
+                'change_1d_pct' => $row['change_1d_pct'] ?? null,
+                'change_3d_pct' => $row['change_3d_pct'] ?? null,
+                'change_5d_pct' => $row['change_5d_pct'] ?? null,
+                'snapshot_time' => $row['snapshot_time'] ?? null,
+            ],
+            $rows
+        );
+
+        $global = array_slice($mapped, 0, max(1, min(30, $globalLimit)));
+
+        $bySector = [];
+        $bySymbol = [];
+        foreach ($mapped as $row) {
+            $symbol = strtoupper(trim((string) ($row['symbol'] ?? '')));
+            if ($symbol !== '' && !isset($bySymbol[$symbol])) {
+                $bySymbol[$symbol] = $row;
+            }
+            $sectorName = trim((string) ($row['sector_name'] ?? ''));
+            if ($sectorName === '') {
+                continue;
+            }
+            if (!isset($bySector[$sectorName])) {
+                $bySector[$sectorName] = [];
+            }
+            if (count($bySector[$sectorName]) >= max(1, min(10, $sectorLimit))) {
+                continue;
+            }
+            $bySector[$sectorName][] = $row;
+        }
+
+        return [
+            'trade_date' => $tradeDate,
+            'global' => array_values($global),
+            'by_sector' => $bySector,
+            'by_symbol' => $bySymbol,
+        ];
+    }
+
+    /**
+     * @param array<string, array<int, array<string, mixed>>> $bySector
+     * @param array<string, array<string, mixed>> $bySymbol
+     * @param array<int, array<string, mixed>> $globalFallback
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveSectorLeaders(
+        string $sectorName,
+        array $bySector,
+        int $limit = 3,
+        string $fallbackSymbol = '',
+        array $bySymbol = [],
+        array $globalFallback = []
+    ): array
+    {
+        $name = $this->normalizeSectorName($sectorName);
+        if ($name !== '' && $bySector !== []) {
+            if (isset($bySector[$sectorName])) {
+                return array_slice($bySector[$sectorName], 0, $limit);
+            }
+
+            foreach ($bySector as $candidateName => $leaders) {
+                $candidate = $this->normalizeSectorName((string) $candidateName);
+                if ($candidate === '') {
+                    continue;
+                }
+                if (str_contains($candidate, $name) || str_contains($name, $candidate)) {
+                    return array_slice($leaders, 0, $limit);
+                }
+            }
+        }
+
+        $picked = [];
+        $seen = [];
+
+        $symbol = strtoupper(trim($fallbackSymbol));
+        if ($symbol !== '' && isset($bySymbol[$symbol])) {
+            $picked[] = $bySymbol[$symbol];
+            $seen[$symbol] = true;
+        }
+
+        foreach ($globalFallback as $row) {
+            $s = strtoupper(trim((string) ($row['symbol'] ?? '')));
+            if ($s === '' || isset($seen[$s])) {
+                continue;
+            }
+            $picked[] = $row;
+            $seen[$s] = true;
+            if (count($picked) >= $limit) {
+                break;
+            }
+        }
+
+        return array_slice($picked, 0, $limit);
+    }
+
+    private function normalizeSectorName(string $name): string
+    {
+        $name = trim($name);
+        if ($name === '') {
+            return '';
+        }
+        return (string) preg_replace('/\s+/u', '', $name);
     }
 
     private function clamp(float $value, float $min, float $max): float

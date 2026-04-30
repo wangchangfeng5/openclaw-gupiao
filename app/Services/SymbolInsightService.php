@@ -14,6 +14,7 @@ final class SymbolInsightService
     private array $latestSuggestionMap = [];
     private ?int $latestSuggestionUserId = null;
     private bool $latestSuggestionLoaded = false;
+    private ?bool $hasInsightsLatestTable = null;
 
     public function analyze(
         string $symbol,
@@ -101,6 +102,8 @@ final class SymbolInsightService
 
     public function saveWatchlistInsight(int $watchlistId, array $analysis, ?int $userId = null): int
     {
+        $normalizedUserId = max(0, (int) ($userId ?? 0));
+
         $stmt = Database::connection()->prepare(
             'INSERT INTO watchlist_insights (
                 user_id, watchlist_id, symbol, current_price, support_price, resistance_price,
@@ -114,7 +117,7 @@ final class SymbolInsightService
         );
 
         $stmt->execute([
-            'user_id' => $userId,
+            'user_id' => $normalizedUserId,
             'watchlist_id' => $watchlistId,
             'symbol' => $analysis['symbol'] ?? '',
             'current_price' => $analysis['current_price'] ?? null,
@@ -131,7 +134,57 @@ final class SymbolInsightService
             'raw_json' => json_encode($analysis, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
 
-        return (int) Database::connection()->lastInsertId();
+        $insightId = (int) Database::connection()->lastInsertId();
+
+        if ($this->hasWatchlistInsightsLatestTable()) {
+            $latestStmt = Database::connection()->prepare(
+                'INSERT INTO watchlist_insights_latest (
+                    user_id, watchlist_id, insight_id, symbol, current_price, support_price, resistance_price,
+                    stop_loss_price, take_profit_price, position_zone, action_advice, confidence,
+                    openclaw_note, analyzed_at, next_review_at, raw_json, created_at, updated_at
+                 ) VALUES (
+                    :user_id, :watchlist_id, :insight_id, :symbol, :current_price, :support_price, :resistance_price,
+                    :stop_loss_price, :take_profit_price, :position_zone, :action_advice, :confidence,
+                    :openclaw_note, :analyzed_at, :next_review_at, :raw_json, NOW(), NOW()
+                 )
+                 ON DUPLICATE KEY UPDATE
+                    insight_id = VALUES(insight_id),
+                    symbol = VALUES(symbol),
+                    current_price = VALUES(current_price),
+                    support_price = VALUES(support_price),
+                    resistance_price = VALUES(resistance_price),
+                    stop_loss_price = VALUES(stop_loss_price),
+                    take_profit_price = VALUES(take_profit_price),
+                    position_zone = VALUES(position_zone),
+                    action_advice = VALUES(action_advice),
+                    confidence = VALUES(confidence),
+                    openclaw_note = VALUES(openclaw_note),
+                    analyzed_at = VALUES(analyzed_at),
+                    next_review_at = VALUES(next_review_at),
+                    raw_json = VALUES(raw_json),
+                    updated_at = NOW()'
+            );
+            $latestStmt->execute([
+                'user_id' => $normalizedUserId,
+                'watchlist_id' => $watchlistId,
+                'insight_id' => $insightId,
+                'symbol' => $analysis['symbol'] ?? '',
+                'current_price' => $analysis['current_price'] ?? null,
+                'support_price' => $analysis['support_price'] ?? null,
+                'resistance_price' => $analysis['resistance_price'] ?? null,
+                'stop_loss_price' => $analysis['stop_loss_price'] ?? null,
+                'take_profit_price' => $analysis['take_profit_price'] ?? null,
+                'position_zone' => $analysis['position_zone'] ?? null,
+                'action_advice' => $analysis['action_advice'] ?? '',
+                'confidence' => $analysis['confidence'] ?? null,
+                'openclaw_note' => $analysis['openclaw_note'] ?? null,
+                'analyzed_at' => $analysis['analyzed_at'] ?? now_sql(),
+                'next_review_at' => $analysis['next_review_at'] ?? null,
+                'raw_json' => json_encode($analysis, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+        }
+
+        return $insightId;
     }
 
     private function recentPrices(string $symbol, string $market, int $limit): array
@@ -312,5 +365,21 @@ final class SymbolInsightService
     private function round4(float $v): float
     {
         return round($v, 4);
+    }
+
+    private function hasWatchlistInsightsLatestTable(): bool
+    {
+        if ($this->hasInsightsLatestTable !== null) {
+            return $this->hasInsightsLatestTable;
+        }
+
+        $stmt = Database::connection()->query(
+            "SELECT COUNT(*)
+             FROM information_schema.tables
+             WHERE table_schema = DATABASE()
+               AND table_name = 'watchlist_insights_latest'"
+        );
+        $this->hasInsightsLatestTable = ((int) ($stmt->fetchColumn() ?: 0)) > 0;
+        return $this->hasInsightsLatestTable;
     }
 }

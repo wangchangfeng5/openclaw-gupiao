@@ -45,6 +45,7 @@ final class SystemHealthController extends BaseController
         $queueSuccess = $queue->successRate(24);
         $quality24h = $this->qualitySummary24h();
         $ingestState = $this->readIngestState();
+        $quotesLatestReconcile = $this->quotesLatestReconcile();
         $recentErrors = $this->recentErrors($userId, 30);
 
         $this->ok([
@@ -58,6 +59,7 @@ final class SystemHealthController extends BaseController
             ],
             'quality_24h' => $quality24h,
             'ingest_state' => $ingestState,
+            'quotes_latest_reconcile' => $quotesLatestReconcile,
             'recent_errors' => $recentErrors,
         ]);
     }
@@ -383,5 +385,170 @@ final class SystemHealthController extends BaseController
         }
 
         return $default;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function quotesLatestReconcile(int $sampleLimit = 3): array
+    {
+        $sampleLimit = max(1, min(20, $sampleLimit));
+        $pdo = Database::connection();
+
+        try {
+            $hasSourceTable = (int) ($pdo->query(
+                "SELECT COUNT(*) FROM information_schema.tables
+                 WHERE table_schema = DATABASE() AND table_name = 'market_quotes'"
+            )->fetchColumn() ?: 0) > 0;
+
+            $hasLatestTable = (int) ($pdo->query(
+                "SELECT COUNT(*) FROM information_schema.tables
+                 WHERE table_schema = DATABASE() AND table_name = 'market_quotes_latest'"
+            )->fetchColumn() ?: 0) > 0;
+
+            if (!$hasSourceTable || !$hasLatestTable) {
+                return [
+                    'checked_at' => now_sql(),
+                    'status' => 'unavailable',
+                    'source_symbols' => null,
+                    'latest_symbols' => null,
+                    'missing_count' => null,
+                    'mismatched_count' => null,
+                    'orphan_count' => null,
+                    'samples' => [
+                        'missing' => [],
+                        'mismatch' => [],
+                        'orphan' => [],
+                    ],
+                    'message' => 'market_quotes or market_quotes_latest table not found',
+                ];
+            }
+
+            $sourceLatestSql = <<<'SQL'
+SELECT
+  mq.symbol,
+  mq.market,
+  mq.name,
+  mq.sector_name,
+  mq.trend_direction,
+  mq.price,
+  mq.change_pct,
+  mq.volume,
+  mq.turnover,
+  mq.quote_time,
+  mq.source
+FROM market_quotes mq
+INNER JOIN (
+  SELECT symbol, market, MAX(id) AS max_id
+  FROM market_quotes
+  GROUP BY symbol, market
+) latest ON latest.max_id = mq.id
+SQL;
+
+            $equalExpr = <<<'SQL'
+(src.name <=> l.name)
+AND (src.sector_name <=> l.sector_name)
+AND (src.trend_direction <=> l.trend_direction)
+AND (src.price <=> l.price)
+AND (src.change_pct <=> l.change_pct)
+AND (src.volume <=> l.volume)
+AND (src.turnover <=> l.turnover)
+AND (src.quote_time <=> l.quote_time)
+AND (src.source <=> l.source)
+SQL;
+
+            $sourceSymbols = (int) ($pdo->query("SELECT COUNT(*) FROM ({$sourceLatestSql}) src")->fetchColumn() ?: 0);
+            $latestSymbols = (int) ($pdo->query('SELECT COUNT(*) FROM market_quotes_latest')->fetchColumn() ?: 0);
+
+            $missingCount = (int) ($pdo->query(
+                "SELECT COUNT(*) FROM ({$sourceLatestSql}) src
+                 LEFT JOIN market_quotes_latest l ON l.symbol = src.symbol AND l.market = src.market
+                 WHERE l.symbol IS NULL"
+            )->fetchColumn() ?: 0);
+
+            $mismatchedCount = (int) ($pdo->query(
+                "SELECT COUNT(*) FROM ({$sourceLatestSql}) src
+                 INNER JOIN market_quotes_latest l ON l.symbol = src.symbol AND l.market = src.market
+                 WHERE NOT ({$equalExpr})"
+            )->fetchColumn() ?: 0);
+
+            $orphanCount = (int) ($pdo->query(
+                "SELECT COUNT(*) FROM market_quotes_latest l
+                 LEFT JOIN ({$sourceLatestSql}) src ON src.symbol = l.symbol AND src.market = l.market
+                 WHERE src.symbol IS NULL"
+            )->fetchColumn() ?: 0);
+
+            $missingRows = $pdo->query(
+                "SELECT src.symbol, src.market, src.quote_time, src.source
+                 FROM ({$sourceLatestSql}) src
+                 LEFT JOIN market_quotes_latest l ON l.symbol = src.symbol AND l.market = src.market
+                 WHERE l.symbol IS NULL
+                 ORDER BY src.symbol ASC, src.market ASC
+                 LIMIT {$sampleLimit}"
+            )->fetchAll() ?: [];
+
+            $mismatchRows = $pdo->query(
+                "SELECT
+                    src.symbol,
+                    src.market,
+                    src.quote_time AS source_quote_time,
+                    l.quote_time AS latest_quote_time,
+                    src.source AS source_source,
+                    l.source AS latest_source
+                 FROM ({$sourceLatestSql}) src
+                 INNER JOIN market_quotes_latest l ON l.symbol = src.symbol AND l.market = src.market
+                 WHERE NOT ({$equalExpr})
+                 ORDER BY src.symbol ASC, src.market ASC
+                 LIMIT {$sampleLimit}"
+            )->fetchAll() ?: [];
+
+            $orphanRows = $pdo->query(
+                "SELECT l.symbol, l.market, l.quote_time, l.source
+                 FROM market_quotes_latest l
+                 LEFT JOIN ({$sourceLatestSql}) src ON src.symbol = l.symbol AND src.market = l.market
+                 WHERE src.symbol IS NULL
+                 ORDER BY l.symbol ASC, l.market ASC
+                 LIMIT {$sampleLimit}"
+            )->fetchAll() ?: [];
+
+            $diffTotal = $missingCount + $mismatchedCount;
+            $status = 'ok';
+            if ($diffTotal > 20) {
+                $status = 'error';
+            } elseif ($diffTotal > 0 || $orphanCount > 0) {
+                $status = 'warn';
+            }
+
+            return [
+                'checked_at' => now_sql(),
+                'status' => $status,
+                'source_symbols' => $sourceSymbols,
+                'latest_symbols' => $latestSymbols,
+                'missing_count' => $missingCount,
+                'mismatched_count' => $mismatchedCount,
+                'orphan_count' => $orphanCount,
+                'samples' => [
+                    'missing' => $missingRows,
+                    'mismatch' => $mismatchRows,
+                    'orphan' => $orphanRows,
+                ],
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'checked_at' => now_sql(),
+                'status' => 'error',
+                'source_symbols' => null,
+                'latest_symbols' => null,
+                'missing_count' => null,
+                'mismatched_count' => null,
+                'orphan_count' => null,
+                'samples' => [
+                    'missing' => [],
+                    'mismatch' => [],
+                    'orphan' => [],
+                ],
+                'message' => $e->getMessage(),
+            ];
+        }
     }
 }

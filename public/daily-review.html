@@ -1,0 +1,104 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>每日复盘中心 | OpenClaw</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/app.css?v=20260417-colorrule" />
+  <link rel="stylesheet" href="/assets/css/focus-pages.css?v=20260430-daily-review-calendar" />
+</head>
+<body class="daily-review-page">
+  <div class="bg-grid"></div>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <main class="focus-shell">
+    <header class="focus-top">
+      <div>
+        <h1 class="focus-title">每日复盘中心</h1>
+        <p class="focus-sub">收盘自动复盘 + 手工补充复盘，沉淀收益、问题、不足与改进建议</p>
+      </div>
+      <div class="focus-actions">
+        <button id="openDashboardBtn" class="btn ghost" type="button">总面板</button>
+        <button id="openPositionsBtn" class="btn ghost" type="button">持仓雷达</button>
+        <button id="refreshBtn" class="btn ghost" type="button">刷新</button>
+        <button id="generateTodayBtn" class="btn" type="button">生成今日日志</button>
+        <button id="logoutBtn" class="btn danger" type="button">退出</button>
+      </div>
+    </header>
+
+    <section id="reviewKpi" class="focus-grid"></section>
+
+    <section class="focus-panel">
+      <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+        <h3 style="margin:0;">复盘日历</h3>
+        <div class="focus-actions">
+          <button id="calendarPrevBtn" class="btn ghost tiny" type="button">上月</button>
+          <span id="calendarMonthLabel" class="chip">-</span>
+          <button id="calendarNextBtn" class="btn ghost tiny" type="button">下月</button>
+        </div>
+      </div>
+      <div id="reviewCalendar" class="review-calendar"></div>
+      <p class="notice" style="margin-top:8px;">日历格里会标注：当日合计收益、交易笔数、执行评分与风险标签。点击日期可快速切换查看。</p>
+    </section>
+
+    <section class="focus-layout">
+      <section class="focus-panel">
+        <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin:0;">自动复盘（系统生成）</h3>
+          <span id="autoStamp" class="chip">-</span>
+        </div>
+        <div id="autoSummary" class="focus-card"></div>
+        <div class="review-split-list">
+          <article class="focus-card">
+            <h4>问题</h4>
+            <pre id="autoIssues" class="review-pre"></pre>
+          </article>
+          <article class="focus-card">
+            <h4>不足</h4>
+            <pre id="autoShortcomings" class="review-pre"></pre>
+          </article>
+          <article class="focus-card">
+            <h4>建议</h4>
+            <pre id="autoSuggestions" class="review-pre"></pre>
+          </article>
+        </div>
+        <div id="autoMetricsBox" class="focus-card review-metrics-box"></div>
+      </section>
+
+      <section class="focus-panel">
+        <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin:0;">我的复盘补充</h3>
+          <span id="selfStamp" class="chip">-</span>
+        </div>
+        <form id="selfReviewForm" class="focus-form">
+          <input type="hidden" name="id" />
+          <label>今日收益总结<textarea name="self_profit_summary" rows="2" placeholder="今天做得好的地方与结果"></textarea></label>
+          <label>今日问题<textarea name="self_issues" rows="3" placeholder="哪些操作有问题"></textarea></label>
+          <label>今日不足<textarea name="self_shortcomings" rows="3" placeholder="哪些能力还不够"></textarea></label>
+          <label>明日建议<textarea name="self_suggestions" rows="3" placeholder="明天怎么做更稳"></textarea></label>
+          <label>明日计划<textarea name="self_plan" rows="3" placeholder="仓位、方向、风控计划"></textarea></label>
+          <label>自评分(0-100)<input name="self_score" type="number" min="0" max="100" step="1" /></label>
+          <div class="focus-actions">
+            <button id="saveSelfBtn" class="btn" type="submit">保存我的复盘</button>
+          </div>
+        </form>
+      </section>
+    </section>
+
+    <section class="focus-panel">
+      <div class="focus-actions" style="justify-content: space-between; margin-bottom: 8px;">
+        <h3 style="margin:0;">历史复盘</h3>
+        <span class="notice">点击某一天可加载详情并继续补充</span>
+      </div>
+      <div id="reviewHistoryList" class="focus-list compact"></div>
+    </section>
+  </main>
+
+  <template id="toastTpl"><div class="toast"></div></template>
+  <script src="/assets/js/daily-review-page.js?v=20260430-daily-review-calendar" type="module"></script>
+</body>
+</html>

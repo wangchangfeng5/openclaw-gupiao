@@ -22,35 +22,7 @@ final class WatchlistReviewService
             return ['watchlists' => 0, 'insights' => 0, 'upserts' => 0];
         }
 
-        $symbol = strtoupper(trim((string) ($watch['symbol'] ?? '')));
-        $market = (string) ($watch['market'] ?? 'A_STOCK_MAIN');
-        if ($symbol === '') {
-            return ['watchlists' => 0, 'insights' => 0, 'upserts' => 0];
-        }
-
-        $insights = $this->loadRecentInsights($watchlistId, $userId, $limitInsights);
-        if ($insights === []) {
-            return ['watchlists' => 1, 'insights' => 0, 'upserts' => 0];
-        }
-
-        $minInsightTs = $this->minInsightTimestamp($insights);
-        $quotes = $this->loadQuoteSeries($symbol, $market, $minInsightTs);
-
-        $upserts = 0;
-        foreach ($insights as $insight) {
-            $record = $this->buildRecord($watch, $insight, $quotes, $userId);
-            if ($record === null) {
-                continue;
-            }
-            $this->upsertRecord($record);
-            $upserts++;
-        }
-
-        return [
-            'watchlists' => 1,
-            'insights' => count($insights),
-            'upserts' => $upserts,
-        ];
+        return $this->syncForWatchlistRow($watch, $userId, $limitInsights);
     }
 
     /**
@@ -73,24 +45,7 @@ final class WatchlistReviewService
             return ['watchlists' => 0, 'insights' => 0, 'upserts' => 0];
         }
 
-        $insightTotal = 0;
-        $upsertTotal = 0;
-
-        foreach ($watchlists as $watch) {
-            $watchId = (int) ($watch['id'] ?? 0);
-            if ($watchId <= 0) {
-                continue;
-            }
-            $result = $this->syncForWatchlist($watchId, $userId, $limitInsights);
-            $insightTotal += (int) ($result['insights'] ?? 0);
-            $upsertTotal += (int) ($result['upserts'] ?? 0);
-        }
-
-        return [
-            'watchlists' => count($watchlists),
-            'insights' => $insightTotal,
-            'upserts' => $upsertTotal,
-        ];
+        return $this->syncForWatchlistRows($watchlists, $userId, $limitInsights);
     }
 
     /**
@@ -103,7 +58,7 @@ final class WatchlistReviewService
         }
 
         $stmt = Database::connection()->prepare(
-            "SELECT id
+            "SELECT id, user_id, symbol, market, name
              FROM watchlist
              WHERE user_id = :user_id
                AND status = 'active'
@@ -114,12 +69,40 @@ final class WatchlistReviewService
         $stmt->bindValue(':limit', max(20, min(500, $watchlistLimit)), \PDO::PARAM_INT);
         $stmt->execute();
 
-        $ids = array_map(
-            static fn(array $row): int => (int) ($row['id'] ?? 0),
-            $stmt->fetchAll() ?: []
-        );
+        $rows = $stmt->fetchAll() ?: [];
+        if ($rows === []) {
+            return ['watchlists' => 0, 'insights' => 0, 'upserts' => 0];
+        }
 
-        return $this->syncForWatchlists($ids, $userId, $limitInsights);
+        return $this->syncForWatchlistRows($rows, $userId, $limitInsights);
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $watchlists
+     * @return array<string, int>
+     */
+    private function syncForWatchlistRows(array $watchlists, int $userId, int $limitInsights): array
+    {
+        if ($watchlists === [] || $userId <= 0) {
+            return ['watchlists' => 0, 'insights' => 0, 'upserts' => 0];
+        }
+
+        $watchlistTotal = 0;
+        $insightTotal = 0;
+        $upsertTotal = 0;
+
+        foreach ($watchlists as $watch) {
+            $result = $this->syncForWatchlistRow($watch, $userId, $limitInsights);
+            $watchlistTotal += (int) ($result['watchlists'] ?? 0);
+            $insightTotal += (int) ($result['insights'] ?? 0);
+            $upsertTotal += (int) ($result['upserts'] ?? 0);
+        }
+
+        return [
+            'watchlists' => $watchlistTotal,
+            'insights' => $insightTotal,
+            'upserts' => $upsertTotal,
+        ];
     }
 
     /**
@@ -670,6 +653,48 @@ final class WatchlistReviewService
 
         $score = $acc * 0.45 + $win * 0.28 + $ret * 4.2 + $sampleBoost;
         return round($score, 4);
+    }
+
+    /**
+     * @param array<string, mixed> $watch
+     * @return array<string, int>
+     */
+    private function syncForWatchlistRow(array $watch, int $userId, int $limitInsights): array
+    {
+        $watchlistId = (int) ($watch['id'] ?? 0);
+        if ($watchlistId <= 0 || $userId <= 0) {
+            return ['watchlists' => 0, 'insights' => 0, 'upserts' => 0];
+        }
+
+        $symbol = strtoupper(trim((string) ($watch['symbol'] ?? '')));
+        $market = (string) ($watch['market'] ?? 'A_STOCK_MAIN');
+        if ($symbol === '') {
+            return ['watchlists' => 0, 'insights' => 0, 'upserts' => 0];
+        }
+
+        $insights = $this->loadRecentInsights($watchlistId, $userId, $limitInsights);
+        if ($insights === []) {
+            return ['watchlists' => 1, 'insights' => 0, 'upserts' => 0];
+        }
+
+        $minInsightTs = $this->minInsightTimestamp($insights);
+        $quotes = $this->loadQuoteSeries($symbol, $market, $minInsightTs);
+
+        $upserts = 0;
+        foreach ($insights as $insight) {
+            $record = $this->buildRecord($watch, $insight, $quotes, $userId);
+            if ($record === null) {
+                continue;
+            }
+            $this->upsertRecord($record);
+            $upserts++;
+        }
+
+        return [
+            'watchlists' => 1,
+            'insights' => count($insights),
+            'upserts' => $upserts,
+        ];
     }
 
     /**

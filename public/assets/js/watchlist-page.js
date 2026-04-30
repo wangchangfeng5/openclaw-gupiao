@@ -91,6 +91,20 @@ function fmtRate(v, digits = 1) {
   return `${Number(v).toFixed(digits)}%`;
 }
 
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function textOr(value, fallback = '-') {
+  const text = String(value ?? '').trim();
+  return text === '' ? fallback : text;
+}
+
 function numClass(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n === 0) return '';
@@ -128,8 +142,8 @@ function scoreClass(score) {
 
 function scoreText(row) {
   const score = Number(row.ranking_score || 0);
-  const grade = row.ranking_grade || '-';
-  const tag = row.ranking_tag || '-';
+  const grade = escHtml(textOr(row.ranking_grade, '-'));
+  const tag = escHtml(textOr(row.ranking_tag, '-'));
   return `<span class="score-badge ${scoreClass(score)}">${fmtNum(score, 0)} · ${grade}</span><br/><span class="notice">${tag}</span>`;
 }
 
@@ -172,7 +186,7 @@ function renderKpi(rows) {
   ];
 
   $('#watchKpi').innerHTML = cards
-    .map(([k, v]) => `<article class="focus-kpi"><p>${k}</p><strong>${typeof v === 'number' ? fmtNum(v, 0) : v}</strong></article>`)
+    .map(([k, v]) => `<article class="focus-kpi"><p>${escHtml(k)}</p><strong>${escHtml(typeof v === 'number' ? fmtNum(v, 0) : v)}</strong></article>`)
     .join('');
 }
 
@@ -377,17 +391,17 @@ function renderReviewDashboard(rows = []) {
   const globalKpi = $('#reviewGlobalKpi');
   if (globalKpi) {
     const cards = [
-      ['覆盖个股', `${coveredStocks}/${totalStocks}`],
-      ['快照样本', fmtNum(totalSamples, 0)],
-      ['全局准确率', fmtRate(accuracy)],
-      ['全局3日收益', `<span class="${numClass(ret3)}">${fmtPct(ret3)}</span>`],
-      ['全局5日收益', `<span class="${numClass(ret5)}">${fmtPct(ret5)}</span>`],
-      ['5日胜率', fmtRate(win5)],
-      ['全局复盘评级', `<span class="review-grade ${globalGrade.className}">${globalGrade.label}</span><span class="notice"> ${fmtNum(globalGrade.score, 1)} 分</span>`],
-      ['最新快照', `${latestDate} ${latestSlot}`],
+      ['覆盖个股', `${coveredStocks}/${totalStocks}`, false],
+      ['快照样本', fmtNum(totalSamples, 0), false],
+      ['全局准确率', fmtRate(accuracy), false],
+      ['全局3日收益', `<span class="${numClass(ret3)}">${fmtPct(ret3)}</span>`, true],
+      ['全局5日收益', `<span class="${numClass(ret5)}">${fmtPct(ret5)}</span>`, true],
+      ['5日胜率', fmtRate(win5), false],
+      ['全局复盘评级', `<span class="review-grade ${globalGrade.className}">${globalGrade.label}</span><span class="notice"> ${fmtNum(globalGrade.score, 1)} 分</span>`, true],
+      ['最新快照', `${latestDate} ${latestSlot}`, false],
     ];
     globalKpi.innerHTML = cards
-      .map(([k, v]) => `<article class="review-kpi"><p>${k}</p><strong>${v}</strong></article>`)
+      .map(([k, v, raw]) => `<article class="review-kpi"><p>${escHtml(k)}</p><strong>${raw ? v : escHtml(v)}</strong></article>`)
       .join('');
   }
 
@@ -435,7 +449,7 @@ function renderReviewDashboard(rows = []) {
           ${ranked.map((row, idx) => `
             <tr>
               <td>${idx + 1}</td>
-              <td><strong>${row.symbol}</strong><br/><span class="notice">${row.name || '-'}</span></td>
+              <td><strong>${escHtml(textOr(row.symbol, '-'))}</strong><br/><span class="notice">${escHtml(textOr(row.name, '-'))}</span></td>
               <td>${(() => {
                 const g = reviewGradeFromMetrics(
                   row.snapshot_score ?? row.review_score,
@@ -449,9 +463,9 @@ function renderReviewDashboard(rows = []) {
               <td>${fmtNum(row.snapshot_sample_count ?? row.review_total, 0)}</td>
               <td>${fmtRate(row.snapshot_accuracy_rate ?? row.review_accuracy_rate)}</td>
               <td><span class="${numClass(row.snapshot_avg_return_5d_pct ?? row.review_avg_return_5d_pct)}">${fmtPct(row.snapshot_avg_return_5d_pct ?? row.review_avg_return_5d_pct)}</span></td>
-              <td>${row.snapshot_date || '-'} ${snapshotSlotLabel(row.snapshot_slot || '-')}</td>
+              <td>${escHtml(textOr(row.snapshot_date, '-'))} ${escHtml(snapshotSlotLabel(row.snapshot_slot || '-'))}</td>
               <td>${sparklineSvg(row.snapshot_series_points || row.review_sparkline_points || [])}</td>
-              <td><button class="btn ghost tiny" data-review-focus="${row.id}">查看</button></td>
+              <td><button class="btn ghost tiny" data-review-focus="${Number(row.id || 0)}">查看</button></td>
             </tr>
           `).join('')}
         </tbody>
@@ -520,7 +534,7 @@ function renderReviewDetailBox(row, detail) {
     </article>
     <article class="review-kpi">
       <p>最新快照</p>
-      <strong>${snapshotLast ? `${snapshotLast.snapshot_date || '-'} ${snapshotSlotLabel(snapshotLast.snapshot_slot || '-')}` : '-'}</strong>
+      <strong>${snapshotLast ? `${escHtml(textOr(snapshotLast.snapshot_date, '-'))} ${escHtml(snapshotSlotLabel(snapshotLast.snapshot_slot || '-'))}` : '-'}</strong>
     </article>
     <article class="review-kpi">
       <p>复盘评级</p>
@@ -568,7 +582,7 @@ function renderReviewDetailBox(row, detail) {
 
   historyNode.innerHTML = reviews.slice(0, 16).map((x) => `
     <article class="focus-card review-history-card">
-      <h4>${x.evaluated_at || '-'} · ${x.expected_direction || 'neutral'} · ${(Number(x.is_accurate) === 1 ? '判断有效' : '判断偏差')}</h4>
+      <h4>${escHtml(textOr(x.evaluated_at, '-'))} · ${escHtml(textOr(x.expected_direction, 'neutral'))} · ${(Number(x.is_accurate) === 1 ? '判断有效' : '判断偏差')}</h4>
       <p>
         1日: <span class="${numClass(x.return_1d_pct)}">${fmtPct(x.return_1d_pct)}</span>
         · 3日: <span class="${numClass(x.return_3d_pct)}">${fmtPct(x.return_3d_pct)}</span>
@@ -576,7 +590,7 @@ function renderReviewDetailBox(row, detail) {
       </p>
       <div class="focus-meta">
         <span>基准价 ${fmtNum(x.base_price)}</span>
-        <span>${x.evaluation_note || '-'}</span>
+        <span>${escHtml(textOr(x.evaluation_note, '-'))}</span>
       </div>
     </article>
   `).join('');
@@ -643,7 +657,7 @@ function reviewCell(row) {
         <span class="review-chip">5日胜率 ${fmtRate(win5)}</span>
         <span class="review-grade ${grade.className}">${grade.label}</span>
       </div>
-      <div class="notice">快照: ${snapshotTimeText}</div>
+      <div class="notice">快照: ${escHtml(snapshotTimeText)}</div>
       <div>
         <span class="notice">准确率</span>
         <strong>${fmtRate(accRate)}</strong>
@@ -679,24 +693,24 @@ function renderTable(rows) {
           ? `${fmtNum(r.volume_ratio, 2)}x`
           : '-';
         return `
-          <tr data-row-id="${r.id}" class="${Number(r.id) === Number(state.selectedId || 0) ? 'is-selected' : ''}">
-            <td><strong>${r.symbol}</strong><br/><span class="notice">${r.name || '-'}</span></td>
-            <td>${r.sector_name || '-'}<br/><span class="notice">${trendLabel(r.trend_direction)}</span></td>
+          <tr data-row-id="${Number(r.id || 0)}" class="${Number(r.id) === Number(state.selectedId || 0) ? 'is-selected' : ''}">
+            <td><strong>${escHtml(textOr(r.symbol, '-'))}</strong><br/><span class="notice">${escHtml(textOr(r.name, '-'))}</span></td>
+            <td>${escHtml(textOr(r.sector_name, '-'))}<br/><span class="notice">${escHtml(trendLabel(r.trend_direction))}</span></td>
             <td>${scoreText(r)}</td>
-            <td>${fmtNum(r.priority, 0)}<br/><span class="notice">${r.status}</span></td>
+            <td>${fmtNum(r.priority, 0)}<br/><span class="notice">${escHtml(textOr(r.status, '-'))}</span></td>
             <td>${fmtNum(r.current_price)}</td>
             <td>${volText}<br/><span class="notice">均量20: ${fmtNum(r.avg_volume_20, 0)}</span></td>
             <td>${fmtNum(r.support_price)} / ${fmtNum(r.resistance_price)}</td>
             <td><span class="zone ${zoneClass(r.position_zone)}">${zoneLabel(r.position_zone)}</span></td>
-            <td>${r.ranking_action || r.action_advice || '-'}</td>
+            <td>${escHtml(textOr(r.ranking_action || r.action_advice, '-'))}</td>
             <td>${reviewCell(r)}</td>
-            <td>${(r.openclaw_note || '-').toString().slice(0, 56)}</td>
+            <td>${escHtml((r.openclaw_note || '-').toString().slice(0, 56))}</td>
             <td>
-              <button class="btn ghost tiny" data-edit="${r.id}">编辑</button>
-              <button class="btn ghost tiny" data-analyze="${r.id}">分析</button>
-              <button class="btn ghost tiny" data-review="${r.id}">复盘</button>
-              <button class="btn ghost tiny" data-detail="${r.id}">详情</button>
-              <button class="btn tiny" data-delete="${r.id}">删除</button>
+              <button class="btn ghost tiny" data-edit="${Number(r.id || 0)}">编辑</button>
+              <button class="btn ghost tiny" data-analyze="${Number(r.id || 0)}">分析</button>
+              <button class="btn ghost tiny" data-review="${Number(r.id || 0)}">复盘</button>
+              <button class="btn ghost tiny" data-detail="${Number(r.id || 0)}">详情</button>
+              <button class="btn tiny" data-delete="${Number(r.id || 0)}">删除</button>
             </td>
           </tr>
         `;
@@ -899,13 +913,13 @@ async function loadInsights(id) {
 
   node.innerHTML = rows
     .map((x) => `<article class="focus-card">
-      <h4>${x.symbol} · ${zoneLabel(x.position_zone || 'unknown')} · 置信度 ${fmtNum(x.confidence)}</h4>
+      <h4>${escHtml(textOr(x.symbol, '-'))} · ${escHtml(zoneLabel(x.position_zone || 'unknown'))} · 置信度 ${fmtNum(x.confidence)}</h4>
       <p>现价 ${fmtNum(x.current_price)} · 支撑 ${fmtNum(x.support_price)} · 压力 ${fmtNum(x.resistance_price)}</p>
-      <p>${x.action_advice || '-'}</p>
+      <p>${escHtml(textOr(x.action_advice, '-'))}</p>
       <div class="focus-meta">
         <span>止损 ${fmtNum(x.stop_loss_price)}</span>
         <span>止盈 ${fmtNum(x.take_profit_price)}</span>
-        <span>${x.analyzed_at || '-'}</span>
+        <span>${escHtml(textOr(x.analyzed_at, '-'))}</span>
       </div>
     </article>`)
     .join('');

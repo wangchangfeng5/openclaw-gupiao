@@ -9,11 +9,25 @@
   detailPayload: null,
   detailFetchedAt: 0,
   detailLoading: false,
+  industryAllocation: null,
+  hotTopSectors: null,
 };
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const SIDE_PANEL_STORAGE_KEY = 'positions_side_panel_open_v1';
+const INDUSTRY_COLORS = [
+  '#58d7ff',
+  '#ffc756',
+  '#59e6a5',
+  '#ff7b7b',
+  '#b58cff',
+  '#6fe4ff',
+  '#ffbf63',
+  '#8af17f',
+  '#ff9fb4',
+  '#74b4ff',
+];
 
 async function api(path, options = {}) {
   const timeoutMs = typeof options.timeoutMs === 'number' ? options.timeoutMs : 15000;
@@ -86,6 +100,20 @@ function fmtPct(v) {
   return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
 
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function textOr(value, fallback = '-') {
+  const text = String(value ?? '').trim();
+  return text === '' ? fallback : text;
+}
+
 function numClass(v) {
   const n = Number(v);
   if (!Number.isFinite(n) || n === 0) return '';
@@ -149,8 +177,139 @@ function renderKpi(summary = {}) {
   ];
 
   $('#posKpi').innerHTML = cards
-    .map(([k, v]) => `<article class="focus-kpi"><p>${k}</p><strong>${v}</strong></article>`)
+    .map(([k, v]) => `<article class="focus-kpi"><p>${escHtml(k)}</p><strong>${escHtml(v)}</strong></article>`)
     .join('');
+}
+
+function renderIndustryAllocation(payload) {
+  const donut = $('#industryDonut');
+  const legend = $('#industryLegend');
+  const stamp = $('#industryStamp');
+  if (!donut || !legend || !stamp) return;
+
+  const rows = Array.isArray(payload?.sectors) ? payload.sectors : [];
+  stamp.textContent = payload?.generated_at || '-';
+
+  if (!rows.length) {
+    donut.style.background = 'conic-gradient(rgba(158,178,193,0.28) 0deg, rgba(158,178,193,0.28) 360deg)';
+    donut.innerHTML = '<div class="donut-center">暂无持仓<br/><strong>0%</strong></div>';
+    legend.innerHTML = '<p class="muted">暂无行业占比数据</p>';
+    return;
+  }
+
+  const gradientParts = [];
+  let cursorDeg = 0;
+  rows.forEach((row, idx) => {
+    const pct = Math.max(0, Number(row.weight_pct || 0));
+    const deg = Math.max(0, (pct / 100) * 360);
+    const color = INDUSTRY_COLORS[idx % INDUSTRY_COLORS.length];
+    const end = Math.min(360, cursorDeg + deg);
+    gradientParts.push(`${color} ${cursorDeg.toFixed(2)}deg ${end.toFixed(2)}deg`);
+    cursorDeg = end;
+  });
+
+  if (cursorDeg < 360) {
+    gradientParts.push(`rgba(158,178,193,0.22) ${cursorDeg.toFixed(2)}deg 360deg`);
+  }
+
+  donut.style.background = `conic-gradient(${gradientParts.join(', ')})`;
+  donut.innerHTML = `<div class="donut-center">总市值<br/><strong>${fmtNum(payload.total_market_value || 0, 0)}</strong></div>`;
+
+  const globalLeaders = Array.isArray(payload?.mainboard_leaders) ? payload.mainboard_leaders : [];
+  const globalLeaderHtml = globalLeaders.length
+    ? `<article class="industry-leader-card">
+        <h4>当前主板龙头（按近3日涨幅）${payload?.leaders_trade_date ? ` · ${escHtml(payload.leaders_trade_date)}` : ''}</h4>
+        <div class="industry-leader-list">
+          ${globalLeaders.slice(0, 8).map((x, i) => `
+            <span class="industry-leader-chip">
+              #${i + 1} ${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}
+              <b>${fmtPct(x.change_3d_pct)}</b>
+            </span>
+          `).join('')}
+        </div>
+      </article>`
+    : '<article class="industry-leader-card"><h4>当前主板龙头</h4><p class="muted">暂无龙头数据</p></article>';
+
+  legend.innerHTML = globalLeaderHtml + rows.map((row, idx) => {
+    const color = INDUSTRY_COLORS[idx % INDUSTRY_COLORS.length];
+    const heldSymbols = Array.isArray(row.symbols) ? row.symbols : [];
+    const heldText = heldSymbols.length
+      ? heldSymbols.map((x) => `${textOr(x.symbol, '-')}${x.name ? `(${textOr(x.name, '-')})` : ''}`).join('、')
+      : '-';
+    const sectorLeaders = Array.isArray(row.sector_mainboard_leaders) ? row.sector_mainboard_leaders : [];
+    const sectorLeaderHtml = sectorLeaders.length
+      ? sectorLeaders.map((x, i) => `
+          <span class="industry-leader-chip small">
+            ${i + 1}. ${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}
+            <b>${fmtPct(x.change_3d_pct)}</b>
+          </span>
+        `).join('')
+      : '<span class="notice">暂无该行业主板龙头数据</span>';
+
+    return `
+      <article class="industry-line">
+        <span class="industry-dot" style="background:${color};"></span>
+        <span class="industry-name">${escHtml(textOr(row.sector_name, '未知行业'))} · ${fmtNum(row.stock_count || 0, 0)}只</span>
+        <span class="industry-weight">${fmtPct(row.weight_pct || 0)}</span>
+        <p class="notice industry-held">持仓：${escHtml(heldText)}</p>
+        <div class="industry-leader-list">${sectorLeaderHtml}</div>
+      </article>
+    `;
+  }).join('');
+}
+
+function renderHotTopSectors(payload) {
+  const node = $('#hotSectorTopList');
+  const stamp = $('#hotSectorStamp');
+  if (!node || !stamp) return;
+
+  const rows = Array.isArray(payload?.top) ? payload.top : [];
+  stamp.textContent = payload?.sample_time || payload?.generated_at || '-';
+
+  if (!rows.length) {
+    node.innerHTML = '<p class="muted">暂无热门行业/板块排名数据</p>';
+    return;
+  }
+
+  node.innerHTML = rows.slice(0, 10).map((row, idx) => `
+    <article class="hot-sector-row">
+      <h4>#${Number(row.rank || (idx + 1))} ${escHtml(textOr(row.sector_name, '-'))}</h4>
+      <p>强度 ${fmtNum(row.strength_score)} · 涨跌 ${fmtPct(row.change_pct)} · 龙头 ${escHtml(textOr(row.leading_symbol, '-'))}</p>
+      <p class="notice">活跃数 ${fmtNum(row.active_count || 0, 0)} · ${escHtml(textOr(row.source, '-'))}</p>
+      <div class="industry-leader-list">
+        ${(Array.isArray(row.sector_mainboard_leaders) ? row.sector_mainboard_leaders : []).slice(0, 3).map((x, i) => `
+          <span class="industry-leader-chip small">
+            ${i + 1}. ${escHtml(textOr(x.symbol, '-'))} ${escHtml(textOr(x.name, ''))}
+            <b>${fmtPct(x.change_3d_pct)}</b>
+          </span>
+        `).join('') || '<span class="notice">暂无该行业主板龙头Top3</span>'}
+      </div>
+    </article>
+  `).join('');
+}
+
+async function loadIndustryAllocation(showErrToast = false) {
+  try {
+    const payload = await api('/api/positions/industry-allocation');
+    state.industryAllocation = payload;
+    renderIndustryAllocation(payload);
+  } catch (e) {
+    if (showErrToast) {
+      showToast(`加载行业占比失败: ${e.message}`);
+    }
+  }
+}
+
+async function loadHotTopSectors(showErrToast = false) {
+  try {
+    const payload = await api('/api/market/sectors/hot-top?limit=10');
+    state.hotTopSectors = payload;
+    renderHotTopSectors(payload);
+  } catch (e) {
+    if (showErrToast) {
+      showToast(`加载热门板块失败: ${e.message}`);
+    }
+  }
 }
 
 function positionSnapshotCell(row) {
@@ -168,12 +327,12 @@ function positionSnapshotCell(row) {
         <span class="pill ${pnlPct >= 0 ? 'up' : 'down'}">浮动 ${fmtPct(pnlPct)}</span>
         <span class="pill ${realized >= 0 ? 'up' : 'down'}">已实现 ${fmtNum(realized)}</span>
       </div>
-      <div class="notice">${trendLabel(insight.trend_direction)} · <span class="zone ${zoneClass(insight.position_zone)}">${zoneLabel(insight.position_zone)}</span></div>
+      <div class="notice">${escHtml(trendLabel(insight.trend_direction))} · <span class="zone ${zoneClass(insight.position_zone)}">${escHtml(zoneLabel(insight.position_zone))}</span></div>
       <div class="position-snapshot-lines">
         <span class="${pnlClass}">距止损 ${fmtPct(stopDist)}</span>
         <span class="${realizedClass}">距止盈 ${fmtPct(takeDist)}</span>
       </div>
-      <div class="notice">建议：${(insight.action_advice || row.operation_advice || '-').toString().slice(0, 34)}</div>
+      <div class="notice">建议：${escHtml((insight.action_advice || row.operation_advice || '-').toString().slice(0, 34))}</div>
     </div>
   `;
 }
@@ -198,8 +357,8 @@ function renderTable(rows) {
         const realizedClass = Number(r.realized_pnl_total || 0) >= 0 ? 'up' : 'down';
         const selectedClass = Number(r.id) === Number(state.selectedPositionId || 0) ? 'is-selected' : '';
 
-        return `<tr data-row-id="${r.id}" class="${selectedClass}">
-          <td><strong>${r.symbol}</strong><br/><span class="notice">${r.name || '-'}</span></td>
+        return `<tr data-row-id="${Number(r.id || 0)}" class="${selectedClass}">
+          <td><strong>${escHtml(textOr(r.symbol, '-'))}</strong><br/><span class="notice">${escHtml(textOr(r.name, '-'))}</span></td>
           <td>${fmtNum(insight.current_price)} / ${fmtNum(r.cost_price)}</td>
           <td><span class="pill ${pnlClass}">${fmtNum(r.pnl)} (${fmtPct(r.pnl_pct)})</span></td>
           <td><span class="pill ${realizedClass}">${fmtNum(r.realized_pnl_total || 0)}</span></td>
@@ -207,12 +366,12 @@ function renderTable(rows) {
           <td>${fmtNum(insight.stop_loss_price)} / ${fmtNum(insight.take_profit_price)}</td>
           <td><span class="zone ${zoneClass(insight.position_zone)}">${zoneLabel(insight.position_zone)}</span></td>
           <td>${positionSnapshotCell(r)}</td>
-          <td>${r.trade_count || 0}<br/><span class="notice">${r.last_trade_type ? `${tradeLabel(r.last_trade_type)} @ ${r.last_traded_at || '-'}` : '-'}</span></td>
+          <td>${fmtNum(r.trade_count || 0, 0)}<br/><span class="notice">${r.last_trade_type ? `${escHtml(tradeLabel(r.last_trade_type))} @ ${escHtml(textOr(r.last_traded_at, '-'))}` : '-'}</span></td>
           <td>
-            <button class="btn ghost tiny" data-edit-pos="${r.id}">编辑</button>
-            <button class="btn ghost tiny" data-trade-pos="${r.id}">交易</button>
-            <button class="btn ghost tiny" data-detail-pos="${r.id}">详情</button>
-            <button class="btn tiny" data-del-pos="${r.id}">删除</button>
+            <button class="btn ghost tiny" data-edit-pos="${Number(r.id || 0)}">编辑</button>
+            <button class="btn ghost tiny" data-trade-pos="${Number(r.id || 0)}">交易</button>
+            <button class="btn ghost tiny" data-detail-pos="${Number(r.id || 0)}">详情</button>
+            <button class="btn tiny" data-del-pos="${Number(r.id || 0)}">删除</button>
           </td>
         </tr>`;
       }).join('')}
@@ -260,19 +419,19 @@ function renderTradeList(trades) {
     const pnlText = t.realized_pnl === null || t.realized_pnl === undefined
       ? '-'
       : `<span class="pill ${pnlClass}">${fmtNum(t.realized_pnl)}</span>`;
-    const undoBtn = idx === 0 ? `<button class="btn ghost tiny" data-undo-trade="${t.id}">撤销本笔</button>` : '';
+    const undoBtn = idx === 0 ? `<button class="btn ghost tiny" data-undo-trade="${Number(t.id || 0)}">撤销本笔</button>` : '';
 
     return `<article class="focus-card">
-      <h4>${tradeLabel(t.trade_type)} · 数量 ${fmtNum(t.quantity, 4)} · 价格 ${fmtNum(t.price, 4)}</h4>
+      <h4>${escHtml(tradeLabel(t.trade_type))} · 数量 ${fmtNum(t.quantity, 4)} · 价格 ${fmtNum(t.price, 4)}</h4>
       <p>前仓位 ${fmtNum(t.before_quantity, 4)} / 后仓位 ${fmtNum(t.after_quantity, 4)} · 前成本 ${fmtNum(t.before_cost_price, 4)} / 后成本 ${fmtNum(t.after_cost_price, 4)}</p>
       <div class="focus-meta">
         <span>手续费 ${fmtNum(t.fee, 4)}</span>
         <span>成交额 ${fmtNum(t.amount, 4)}</span>
         <span>实现盈亏 ${pnlText}</span>
-        <span>${t.traded_at || '-'}</span>
+        <span>${escHtml(textOr(t.traded_at, '-'))}</span>
         ${undoBtn}
       </div>
-      ${t.note ? `<p style="margin-top:6px;">备注: ${t.note}</p>` : ''}
+      ${t.note ? `<p style="margin-top:6px;">备注: ${escHtml(t.note)}</p>` : ''}
     </article>`;
   }).join('');
 
@@ -310,10 +469,10 @@ function renderNoteList(notes) {
 
   node.innerHTML = notes.map((n) => `
     <article class="focus-card">
-      <h4>${noteTypeLabel(n.note_type)}</h4>
-      <p>${n.content || '-'}</p>
+      <h4>${escHtml(noteTypeLabel(n.note_type))}</h4>
+      <p>${escHtml(textOr(n.content, '-'))}</p>
       <div class="focus-meta">
-        <span>${n.created_at || '-'}</span>
+        <span>${escHtml(textOr(n.created_at, '-'))}</span>
         ${n.review_score !== null && n.review_score !== undefined ? `<span>评分 ${fmtNum(n.review_score, 0)}</span>` : ''}
       </div>
     </article>
@@ -612,7 +771,7 @@ function renderTrendLegend(overview) {
   ].filter((x) => Number.isFinite(Number(x[1])) && Number(x[1]) > 0);
 
   node.innerHTML = items.length
-    ? items.map(([label, value, cls]) => `<span class="legend-chip ${cls}">${label}: ${fmtNum(value, 3)}</span>`).join('')
+    ? items.map(([label, value, cls]) => `<span class="legend-chip ${cls}">${escHtml(label)}: ${fmtNum(value, 3)}</span>`).join('')
     : '<span class="notice">暂无关键价位数据</span>';
 }
 
@@ -622,17 +781,17 @@ function renderTrendMetrics(overview, trades) {
 
   const latestTrade = Array.isArray(trades) && trades.length ? trades[0] : null;
   const cards = [
-    ['趋势/位置', `${trendLabel(overview.trend_direction)} · ${zoneLabel(overview.position_zone)}`],
-    ['浮动收益', `<span class="${numClass(overview.pnl_pct)}">${fmtNum(overview.pnl)} (${fmtPct(overview.pnl_pct)})</span>`],
-    ['已实现收益', `<span class="${numClass(overview.realized_pnl_total)}">${fmtNum(overview.realized_pnl_total || 0)}</span>`],
-    ['当前/成本', `${fmtNum(overview.current_price)} / ${fmtNum(overview.cost_price)}`],
-    ['距止损/止盈', `${fmtPct(overview.distance_to_stop_pct)} / ${fmtPct(overview.distance_to_take_pct)}`],
-    ['最近操作', latestTrade ? `${tradeLabel(latestTrade.trade_type)} @ ${fmtNum(latestTrade.price)} (${latestTrade.traded_at || '-'})` : '-'],
-    ['操作建议', (overview.action_advice || overview.operation_advice || '-').toString()],
+    ['趋势/位置', `${trendLabel(overview.trend_direction)} · ${zoneLabel(overview.position_zone)}`, false],
+    ['浮动收益', `<span class="${numClass(overview.pnl_pct)}">${fmtNum(overview.pnl)} (${fmtPct(overview.pnl_pct)})</span>`, true],
+    ['已实现收益', `<span class="${numClass(overview.realized_pnl_total)}">${fmtNum(overview.realized_pnl_total || 0)}</span>`, true],
+    ['当前/成本', `${fmtNum(overview.current_price)} / ${fmtNum(overview.cost_price)}`, false],
+    ['距止损/止盈', `${fmtPct(overview.distance_to_stop_pct)} / ${fmtPct(overview.distance_to_take_pct)}`, false],
+    ['最近操作', latestTrade ? `${tradeLabel(latestTrade.trade_type)} @ ${fmtNum(latestTrade.price)} (${latestTrade.traded_at || '-'})` : '-', false],
+    ['操作建议', (overview.action_advice || overview.operation_advice || '-').toString(), false],
   ];
 
   node.innerHTML = cards
-    .map(([k, v], idx) => `<article class="detail-metric ${idx === cards.length - 1 ? 'full' : ''}"><p>${k}</p><strong>${v}</strong></article>`)
+    .map(([k, v, raw], idx) => `<article class="detail-metric ${idx === cards.length - 1 ? 'full' : ''}"><p>${escHtml(k)}</p><strong>${raw ? v : escHtml(v)}</strong></article>`)
     .join('');
 }
 
@@ -942,6 +1101,11 @@ function wireActions() {
     e.stopPropagation();
     openExternalPage('/opportunities.html');
   });
+  $('#openDailyReviewBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openExternalPage('/daily-review.html');
+  });
   $('#openHealthBtn')?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -976,6 +1140,14 @@ function wireActions() {
       return;
     }
     await loadPositionDetail(state.selectedPositionId, true);
+  });
+
+  $('#refreshIndustryBtn')?.addEventListener('click', async () => {
+    await loadIndustryAllocation(true);
+  });
+
+  $('#refreshHotSectorsBtn')?.addEventListener('click', async () => {
+    await loadHotTopSectors(true);
   });
 
   $('#refreshBtn').addEventListener('click', () => loadData().catch((e) => showToast(e.message)));
@@ -1016,10 +1188,22 @@ async function boot() {
   wireActions();
 
   await loadData();
+  await Promise.all([
+    loadIndustryAllocation(false),
+    loadHotTopSectors(false),
+  ]);
 
   setInterval(() => {
     loadData().catch(() => {});
   }, 15000);
+
+  setInterval(() => {
+    loadIndustryAllocation(false).catch(() => {});
+  }, 17000);
+
+  setInterval(() => {
+    loadHotTopSectors(false).catch(() => {});
+  }, 19000);
 }
 
 boot().catch(() => {});

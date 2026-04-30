@@ -101,10 +101,24 @@ function fmtFlow(v) {
   return `${n >= 0 ? '+' : '-'}${abs.toFixed(2)}`;
 }
 
+function escHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function textOr(value, fallback = '-') {
+  const text = String(value ?? '').trim();
+  return text === '' ? fallback : text;
+}
+
 function barRow(label, value) {
   const safe = Math.max(0, Math.min(100, Number(value || 0)));
   return `<div class="op-dim-row">
-    <span>${label}</span>
+    <span>${escHtml(label)}</span>
     <div class="op-dim-track"><i style="width:${safe}%;"></i></div>
     <b>${safe.toFixed(0)}</b>
   </div>`;
@@ -147,7 +161,7 @@ function renderKpi(payload) {
     ['交易时段', summary.market_open_now ? '是' : '否'],
   ];
   $('#opKpi').innerHTML = cards
-    .map(([k, v]) => `<article class="focus-kpi"><p>${k}</p><strong>${v}</strong></article>`)
+    .map(([k, v]) => `<article class="focus-kpi"><p>${escHtml(k)}</p><strong>${escHtml(v)}</strong></article>`)
     .join('');
 }
 
@@ -160,10 +174,10 @@ function renderPositions(payload) {
   }
   node.innerHTML = rows.slice(0, 20).map((r) => `
     <article class="focus-card">
-      <h4>${r.symbol} ${r.name || ''} <span class="score-badge ${scoreClass(r.score)}">${fmtNum(r.score, 0)}</span></h4>
-      <p>状态 ${r.status || '-'} · 成本 ${fmtNum(r.cost_price)} · 现价 ${fmtNum(r.current_price)} · 收益 ${fmtPct(r.pnl_pct)}</p>
+      <h4>${escHtml(textOr(r.symbol, '-'))} ${escHtml(textOr(r.name, ''))} <span class="score-badge ${scoreClass(r.score)}">${fmtNum(r.score, 0)}</span></h4>
+      <p>状态 ${escHtml(textOr(r.status, '-'))} · 成本 ${fmtNum(r.cost_price)} · 现价 ${fmtNum(r.current_price)} · 收益 ${fmtPct(r.pnl_pct)}</p>
       <p>距支撑 ${fmtPct(r.distance_to_support_pct)} · 量比 ${fmtNum(r.volume_ratio)}</p>
-      <p>${r.action_advice || '-'}</p>
+      <p>${escHtml(textOr(r.action_advice, '-'))}</p>
     </article>
   `).join('');
 }
@@ -177,10 +191,10 @@ function renderWatchlist(payload) {
   }
   node.innerHTML = rows.slice(0, 24).map((r) => `
     <article class="focus-card">
-      <h4>${r.symbol} ${r.name || ''} <span class="score-badge ${scoreClass(r.score)}">${fmtNum(r.score, 0)}</span></h4>
-      <p>优先级 ${fmtNum(r.priority || 0, 0)} · 评级 ${r.ranking_grade || '-'} · 评分 ${fmtNum(r.ranking_score)}</p>
+      <h4>${escHtml(textOr(r.symbol, '-'))} ${escHtml(textOr(r.name, ''))} <span class="score-badge ${scoreClass(r.score)}">${fmtNum(r.score, 0)}</span></h4>
+      <p>优先级 ${fmtNum(r.priority || 0, 0)} · 评级 ${escHtml(textOr(r.ranking_grade, '-'))} · 评分 ${fmtNum(r.ranking_score)}</p>
       <p>${r.near_support ? '强支撑' : '-'} / ${r.rise_pullback ? '短涨回调' : '-'} / ${r.volume_surge ? '放量' : '-'}</p>
-      <p>${r.action_advice || '-'}</p>
+      <p>${escHtml(textOr(r.action_advice, '-'))}</p>
     </article>
   `).join('');
 }
@@ -197,13 +211,13 @@ function renderOpportunities(payload) {
     const dims = r.dimension_scores || {};
     return `
       <article class="focus-card op-card">
-        <h4>#${idx + 1} ${r.symbol} ${r.name || ''} <span class="score-badge ${scoreClass(r.total_score)}">${fmtNum(r.total_score, 0)}</span></h4>
-        <p>${r.sector_name || '-'} · ${trendLabel(r.trend_direction)} · 现价 ${fmtNum(r.price)} · 涨跌 ${fmtPct(r.change_pct)}</p>
+        <h4>#${idx + 1} ${escHtml(textOr(r.symbol, '-'))} ${escHtml(textOr(r.name, ''))} <span class="score-badge ${scoreClass(r.total_score)}">${fmtNum(r.total_score, 0)}</span></h4>
+        <p>${escHtml(textOr(r.sector_name, '-'))} · ${escHtml(trendLabel(r.trend_direction))} · 现价 ${fmtNum(r.price)} · 涨跌 ${fmtPct(r.change_pct)}</p>
         <div class="focus-meta">
           <span>${r.near_support ? '强支撑' : '非支撑'}</span>
           <span>${r.rise_pullback ? '短涨回调' : '非回调形态'}</span>
           <span>${r.volume_surge ? '放量' : '量能一般'}</span>
-          <span>信号 ${r.signal_level || '-'}</span>
+          <span>信号 ${escHtml(textOr(r.signal_level, '-'))}</span>
         </div>
         <div class="op-dim-board">
           ${barRow('技术面', dims.technical)}
@@ -220,18 +234,18 @@ function renderOpportunities(payload) {
         </div>
         <div class="focus-meta">
           <span>主力净流 ${fmtFlow(r.net_main_inflow)}</span>
-          <span>资金方向 ${r.flow_direction || '-'}</span>
-          <span>强势榜#${r.close_rank || '-'}</span>
-          <span>资金榜#${r.money_rank || '-'}</span>
+          <span>资金方向 ${escHtml(textOr(r.flow_direction, '-'))}</span>
+          <span>强势榜#${escHtml(textOr(r.close_rank, '-'))}</span>
+          <span>资金榜#${escHtml(textOr(r.money_rank, '-'))}</span>
         </div>
         <div class="focus-meta">
           <span>消息数 ${fmtNum(r.news_hits_72h || 0, 0)}</span>
-          <span>${r.policy_tag || '中性'}</span>
-          <span>${r.news_latest_time || '-'}</span>
+          <span>${escHtml(textOr(r.policy_tag, '中性'))}</span>
+          <span>${escHtml(textOr(r.news_latest_time, '-'))}</span>
         </div>
-        ${r.news_latest_title ? `<p class="notice">最新消息：${r.news_latest_title}</p>` : ''}
+        ${r.news_latest_title ? `<p class="notice">最新消息：${escHtml(r.news_latest_title)}</p>` : ''}
         <div class="op-sparkline-wrap">${sparklineSvg(r.sparkline_prices || [])}</div>
-        <p>${r.action_advice || '-'}</p>
+        <p>${escHtml(textOr(r.action_advice, '-'))}</p>
       </article>
     `;
   }).join('');

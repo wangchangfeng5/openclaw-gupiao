@@ -7,6 +7,7 @@ use App\Controllers\AuditController;
 use App\Controllers\AuthController;
 use App\Controllers\DataQualityController;
 use App\Controllers\DashboardController;
+use App\Controllers\DailyReviewController;
 use App\Controllers\InternalIngestController;
 use App\Controllers\MarketController;
 use App\Controllers\OpenClawCronController;
@@ -23,6 +24,7 @@ $router = new Router();
 
 $auth = new AuthController();
 $dashboard = new DashboardController();
+$dailyReview = new DailyReviewController();
 $positions = new PositionsController();
 $suggestions = new SuggestionsController();
 $cron = new OpenClawCronController();
@@ -44,6 +46,10 @@ $router->add('GET', '/api/auth/me', static fn() => $auth->me(), 'auth');
 $router->add('POST', '/api/auth/logout', static fn() => $auth->logout(), 'auth');
 
 $router->add('GET', '/api/dashboard/overview', static fn() => $dashboard->overview(), 'auth');
+$router->add('GET', '/api/reviews/daily', static fn() => $dailyReview->index(), 'auth');
+$router->add('GET', '/api/reviews/daily/latest', static fn() => $dailyReview->latest(), 'auth');
+$router->add('POST', '/api/reviews/daily/generate', static fn() => $dailyReview->generate(), 'auth');
+$router->add('PUT', '/api/reviews/daily/{id}', static fn(array $p) => $dailyReview->update($p), 'auth');
 
 $router->add('GET', '/api/positions', static fn() => $positions->index(), 'auth');
 $router->add('POST', '/api/positions', static fn() => $positions->store(), 'auth');
@@ -56,6 +62,7 @@ $router->add('POST', '/api/positions/{id}/trades', static fn(array $p) => $posit
 $router->add('POST', '/api/positions/{id}/trades/{tradeId}/undo', static fn(array $p) => $positions->undoTrade($p), 'auth');
 $router->add('GET', '/api/positions/{id}/notes', static fn(array $p) => $positions->notes($p), 'auth');
 $router->add('POST', '/api/positions/{id}/notes', static fn(array $p) => $positions->addNote($p), 'auth');
+$router->add('GET', '/api/positions/industry-allocation', static fn() => $positions->industryAllocation(), 'auth');
 
 $router->add('GET', '/api/openclaw/suggestions', static fn() => $suggestions->index(), 'auth');
 $router->add('POST', '/api/openclaw/suggestions/manual', static fn() => $suggestions->manualStore(), 'auth');
@@ -70,6 +77,7 @@ $router->add('GET', '/api/openclaw/cron/jobs/{id}/runs', static fn(array $p) => 
 $router->add('POST', '/api/openclaw/cron/queue/flush', static fn() => $cron->flushQueue(), 'auth');
 
 $router->add('GET', '/api/market/sectors/strength', static fn() => $market->sectorsStrength(), 'auth');
+$router->add('GET', '/api/market/sectors/hot-top', static fn() => $market->hotTopSectors(), 'auth');
 $router->add('GET', '/api/market/watchlist/candidates', static fn() => $market->watchlistCandidates(), 'auth');
 $router->add('GET', '/api/market/heat-alert', static fn() => $market->heatAlert(), 'auth');
 $router->add('GET', '/api/market/close-rankings', static fn() => $market->closeRankings(), 'auth');
